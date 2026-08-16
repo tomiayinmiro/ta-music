@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.tamusic.app.ta_music"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android requires compileSdk 37; flutter.compileSdkVersion
+    // (36) is one behind. compileSdk is backward-compatible, so this is safe.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
