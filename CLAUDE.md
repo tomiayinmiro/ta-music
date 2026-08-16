@@ -128,6 +128,15 @@ test/
 - No hardcoded strings in UI — put them in a constants file (I'll add i18n later)
 - No hardcoded colors, sizes, or fonts in widgets — reference the tokens in `lib/core/theme/`
 
+## Decisions made during Phase 1 (not in the original brief)
+
+- **Riverpod/Freezed pinned to 2.x, not latest**: `audiotags` caps `freezed_annotation` below `3.0.0`, and this Dart SDK's `analyzer` requirements made the newest Riverpod/Freezed line incompatible with it. Exact pinned versions are commented in `pubspec.yaml`. Don't bump these to "latest" without re-checking this conflict.
+- **`json_serializable` dropped entirely** (no version bridges its `source_gen` requirement with the analyzer version this SDK needs). JSON for the lyrics.ovh/LibreTranslate responses will be hand-written `fromJson`/`toJson`, not generated.
+- **Fonts are self-hosted, not `google_fonts`**: Sora and Hanken Grotesk are bundled as variable-weight TTFs under `assets/fonts/` (downloaded once from Google's open-source font repo), declared in `pubspec.yaml`, weights selected via `TextStyle.fontVariations`. Keeps the app fully offline from first launch, consistent with the offline-first brief — no runtime font fetching.
+- **Android `compileSdk` forced to 37 for all subprojects** (root `android/build.gradle.kts`, via `afterEvaluate`): `permission_handler_android` needs 37, and `audiotags` 1.4.5 bundles its own Android module hardcoded to `compileSdk 31`, which fails AAR metadata checks against newer transitive androidx deps. Forcing it at the root avoids patching the third-party plugin.
+- **Windows build needs a one-time manual step after a fresh `flutter pub get`**: run `tool/fix_audiotags_windows.ps1`. `audiotags` extracts a bundled DLL archive into its own source directory during CMake configure, but Flutter builds Windows plugins through a symlink, and that extraction fails through a symlink (a libarchive safeguard). The script pre-extracts it directly in the real pub-cache path once, which the plugin's own build script then detects and skips re-extracting. This lives outside the repo (global pub cache), so it doesn't survive a `flutter pub cache repair` or a different machine's first setup — rerun the script if the Windows build ever fails with "Cannot extract through symlink" again.
+- **`_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS` defined globally in `windows/CMakeLists.txt`**: `audio_service_win` and `permission_handler_windows` use `<experimental/coroutine>`, which this MSVC toolchain (VS 2026) escalated from a deprecation warning to a hard error.
+
 ## Feature roadmap
 - **v1 (build now, phases 1–7):** the shipping product. Complete offline music player with everything listed in "Core capabilities" above.
 - **v1.5 (build after v1 is stable in daily use, phases 8–9):** player skins (alternate now-playing variants, background shader gallery), mood-reactive player bar, visualizers gallery, hi-res audio export, haptic controls.

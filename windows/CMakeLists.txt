@@ -32,6 +32,13 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# audio_service_win and permission_handler_windows use <experimental/coroutine>,
+# which this MSVC toolchain (Visual Studio 2026) now treats as a hard error
+# (C2338) rather than a deprecation warning. Applied globally, not just to
+# app targets, since generated_plugins.cmake pulls plugin subdirectories in
+# below and this must be defined before they're configured.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
