@@ -2,11 +2,13 @@ import 'package:flutter/animation.dart';
 
 /// Motion tokens for `designs/sonic_sanctuary_2/DESIGN.md`.
 ///
-/// PROPOSED — DESIGN.md defines almost no motion values. The only literal
-/// data point anywhere in the doc is the primary-button press scale (0.98x).
-/// No durations or easing curves are specified at all. Everything else below
-/// is a standard Material-3-style proposal and needs your sign-off before
-/// `theme_data.dart` or any widget relies on it.
+/// DESIGN.md defines almost no motion values. The only literal data point
+/// anywhere in the doc is the primary-button press scale (0.98x). No
+/// durations or easing curves are specified at all — everything else below
+/// is a standard Material-3-style derivation, approved as-is 2026-08-17.
+/// No ThemeData slot exists for arbitrary durations/curves, so these are
+/// used directly (e.g. `AnimatedContainer(duration: AppMotion.standard,
+/// curve: AppMotion.standardEasing)`), the same way AppSpacing/AppRadius are.
 class AppMotion {
   AppMotion._();
 
@@ -15,7 +17,7 @@ class AppMotion {
   /// Primary button "High-press feedback using scale (0.98x)".
   static const double pressScale = 0.98;
 
-  // --- PROPOSED, not in DESIGN.md — confirm before use ---
+  // --- Derived, not in DESIGN.md ---
 
   static const Duration fast = Duration(milliseconds: 150);
   static const Duration standard = Duration(milliseconds: 250);

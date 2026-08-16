@@ -6,12 +6,12 @@ import 'typography.dart';
 
 /// Assembled Material 3 [ThemeData] for the app.
 ///
-/// Only wires tokens that came directly from `designs/sonic_sanctuary_2/
-/// DESIGN.md` (see colors.dart / typography.dart "Literal" sections). The
-/// PROPOSED tokens (success/warning/accent colors, title/caption/overline
-/// type styles, motion durations, glass border opacity) are intentionally
-/// NOT used here yet — pending sign-off, slots they'd fill just inherit
-/// Flutter's Material defaults instead of a guessed value.
+/// Wires every token from `designs/sonic_sanctuary_2/DESIGN.md`, both the
+/// literal ones and the derived ones approved 2026-08-17 (see colors.dart /
+/// typography.dart / elevation.dart / motion.dart). Colors and text styles
+/// that have a natural home in [ColorScheme]/[TextTheme] are wired there;
+/// [AppSemanticColors] covers the colors that don't (success/warning/accent/
+/// textTertiary — Material 3's ColorScheme has no slots for these).
 class AppTheme {
   AppTheme._();
 
@@ -23,6 +23,7 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colorScheme.surface,
       textTheme: _textTheme(colorScheme),
+      extensions: const [AppSemanticColors.dark],
       appBarTheme: AppBarTheme(
         backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
@@ -93,18 +94,87 @@ class AppTheme {
       );
 
   static TextTheme _textTheme(ColorScheme colorScheme) {
-    // Only the type-scale steps DESIGN.md actually defines are overridden.
-    // Every other TextTheme slot (titleLarge, bodySmall, labelLarge, ...)
-    // is intentionally left as Flutter's Material default until the
-    // PROPOSED steps in typography.dart are confirmed.
+    // Every type-scale step defined in typography.dart (literal + derived)
+    // is wired here. displayMedium/Small, headlineSmall, and labelLarge have
+    // no corresponding AppTypography token (DESIGN.md doesn't define them
+    // and none were proposed), so those three slots still inherit Flutter's
+    // Material default rather than a guessed value.
     return ThemeData.dark().textTheme.copyWith(
           displayLarge: AppTypography.displayLg.copyWith(color: colorScheme.onSurface),
           headlineLarge: AppTypography.headlineLg.copyWith(color: colorScheme.onSurface),
           headlineMedium: AppTypography.headlineMd.copyWith(color: colorScheme.onSurface),
+          titleLarge: AppTypography.titleLg.copyWith(color: colorScheme.onSurface),
+          titleMedium: AppTypography.titleMd.copyWith(color: colorScheme.onSurface),
+          titleSmall: AppTypography.titleSm.copyWith(color: colorScheme.onSurface),
           bodyLarge: AppTypography.bodyLg.copyWith(color: colorScheme.onSurface),
           bodyMedium: AppTypography.bodyMd.copyWith(color: colorScheme.onSurfaceVariant),
+          bodySmall: AppTypography.caption.copyWith(color: colorScheme.onSurfaceVariant),
           labelMedium: AppTypography.labelMd.copyWith(color: colorScheme.onSurfaceVariant),
           labelSmall: AppTypography.labelSm.copyWith(color: colorScheme.onSurfaceVariant),
         );
+  }
+}
+
+/// Semantic colors with no slot in Material 3's [ColorScheme]. Access via
+/// `Theme.of(context).extension<AppSemanticColors>()!`.
+///
+/// All derived, not in DESIGN.md — approved as-is 2026-08-17. See colors.dart.
+@immutable
+class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
+  const AppSemanticColors({
+    required this.textTertiary,
+    required this.accent,
+    required this.success,
+    required this.onSuccess,
+    required this.warning,
+    required this.onWarning,
+  });
+
+  static const dark = AppSemanticColors(
+    textTertiary: AppColors.textTertiary,
+    accent: AppColors.accent,
+    success: AppColors.success,
+    onSuccess: AppColors.onSuccess,
+    warning: AppColors.warning,
+    onWarning: AppColors.onWarning,
+  );
+
+  final Color textTertiary;
+  final Color accent;
+  final Color success;
+  final Color onSuccess;
+  final Color warning;
+  final Color onWarning;
+
+  @override
+  AppSemanticColors copyWith({
+    Color? textTertiary,
+    Color? accent,
+    Color? success,
+    Color? onSuccess,
+    Color? warning,
+    Color? onWarning,
+  }) {
+    return AppSemanticColors(
+      textTertiary: textTertiary ?? this.textTertiary,
+      accent: accent ?? this.accent,
+      success: success ?? this.success,
+      onSuccess: onSuccess ?? this.onSuccess,
+      warning: warning ?? this.warning,
+      onWarning: onWarning ?? this.onWarning,
+    );
+  }
+
+  @override
+  AppSemanticColors lerp(ThemeExtension<AppSemanticColors>? other, double t) {
+    if (other is! AppSemanticColors) return this;
+    return AppSemanticColors(
+      textTertiary: Color.lerp(textTertiary, other.textTertiary, t)!,
+      accent: Color.lerp(accent, other.accent, t)!,
+      success: Color.lerp(success, other.success, t)!,
+      onSuccess: Color.lerp(onSuccess, other.onSuccess, t)!,
+      warning: Color.lerp(warning, other.warning, t)!,
+      onWarning: Color.lerp(onWarning, other.onWarning, t)!,
+    );
   }
 }

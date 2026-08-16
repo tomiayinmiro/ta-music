@@ -3,13 +3,13 @@ import 'package:flutter/widgets.dart';
 /// Color tokens extracted from `designs/sonic_sanctuary_2/DESIGN.md`.
 ///
 /// The DESIGN.md palette is a literal Material 3 `ColorScheme` export (every
-/// key below matches an M3 ColorScheme field name 1:1) — see [buildColorScheme]
+/// key below matches an M3 ColorScheme field name 1:1) — see `_colorScheme`
 /// in `theme_data.dart`, which assembles these into a real `ColorScheme`.
 ///
-/// PROPOSED / NOT IN DESIGN.md: the block marked below was not present in the
-/// spec and was derived to satisfy fields the brief asked for (text hierarchy,
-/// accent, success, warning) that the design doc doesn't define. Flagged for
-/// sign-off before use.
+/// The second block was not present in DESIGN.md and was derived to satisfy
+/// fields the brief asked for (text hierarchy, accent, success, warning) that
+/// the design doc doesn't define. Approved as-is 2026-08-16 — wired into
+/// `ThemeData.extensions` via `AppSemanticColors` in `theme_data.dart`.
 class AppColors {
   AppColors._();
 
@@ -70,13 +70,13 @@ class AppColors {
   static const onBackground = Color(0xFFE5E2E1);
   static const surfaceVariant = Color(0xFF353534);
 
-  // --- PROPOSED, not in DESIGN.md — confirm before use ---
+  // --- Derived, not in DESIGN.md ---
   // Text hierarchy: DESIGN.md defines onSurface/onSurfaceVariant but no third
   // step. Derived as onSurface at reduced opacity rather than a new hex, so it
   // stays tonally locked to onSurface instead of introducing an unrelated color.
   static const textPrimary = onSurface;
   static const textSecondary = onSurfaceVariant;
-  static Color get textTertiary => onSurface.withValues(alpha: 0.6);
+  static const textTertiary = Color(0x99E5E2E1); // onSurface @ 60% alpha
 
   // Accent: DESIGN.md's prose describes primary+secondary as "glows and
   // highlights" with no separate "accent" concept. Aliased to secondary

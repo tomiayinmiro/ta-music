@@ -42,11 +42,19 @@ class AppElevation {
     );
   }
 
-  // --- PROPOSED, not in DESIGN.md — confirm before use ---
+  // --- Derived, not in DESIGN.md — approved as-is 2026-08-17 ---
   // The doc says the layer-4 border is "top-weighted" but never gives an
   // exact opacity (unlike sonic_sanctuary_1, which specifies "white at 20%
   // to transparent" for the equivalent border — that value is NOT reused
   // here since sonic_sanctuary_2 is the canonical doc and didn't restate it).
   static const Color glassBorderTop = Color(0x26FFFFFF); // white @ 15%
   static const Color glassBorderBottom = Color(0x00FFFFFF); // transparent
+
+  /// Ready-to-use top-to-bottom gradient for the layer-4 "glass edge" border
+  /// (e.g. as the `gradient` of a `GradientBoxBorder`, or painted directly).
+  static const glassBorderGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [glassBorderTop, glassBorderBottom],
+  );
 }

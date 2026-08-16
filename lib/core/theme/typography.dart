@@ -89,11 +89,15 @@ class AppTypography {
     letterSpacing: 0.24, // 0.02em
   );
 
-  // --- PROPOSED, not in DESIGN.md — confirm before use ---
+  // --- Derived, not in DESIGN.md — approved as-is 2026-08-17 ---
   // DESIGN.md has no "title", "caption", or "overline" step, and only one
   // display size / two headline sizes. These fill the gaps the brief asked
   // for (title, caption, overline), sized to slot between the existing
   // steps and reusing the same two font families and weight logic.
+  // Wired into TextTheme in theme_data.dart: titleLg/Md/Sm -> titleLarge/
+  // Medium/Small, caption -> bodySmall. `overline` has no TextTheme slot in
+  // Material 3 (removed from the M2 TextTheme) — use AppTypography.overline
+  // directly where needed (e.g. eyebrow labels above a section).
 
   static const titleLg = TextStyle(
     fontFamily: AppFontFamilies.sora,
