@@ -1,11 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../core/utils/playback_stub.dart';
 import '../../../data/models/song.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/repository_providers.dart';
+import '../../../data/repositories/library_repository.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/section_header.dart';
@@ -20,11 +25,81 @@ import '../../settings/screens/settings_screen.dart';
 /// "Continue Listening" hero driven by the most recently played song, and
 /// quick access links to Favorites + Recently Added (Playlists dropped —
 /// not built until Phase 4).
-class HomeScreen extends ConsumerWidget {
+///
+/// Also owns the Android first-launch permission flow (approved
+/// 2026-08-18): a proactive rationale dialog fires once per cold start when
+/// permission isn't granted and the library's empty, since this is the
+/// user's first impression of the app on Android.
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _checkedPermissionThisSession = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybePromptForPermission());
+    }
+  }
+
+  Future<void> _maybePromptForPermission() async {
+    if (_checkedPermissionThisSession || !mounted) return;
+    _checkedPermissionThisSession = true;
+
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    final status = await repo.checkStoragePermissionStatus();
+    // Only the plain "never asked / soft-denied" state gets the proactive
+    // dialog. Already-granted needs nothing; permanently-denied would just
+    // be nagging on every cold start for something the user already
+    // explicitly declined twice — the empty state's "Open Settings" button
+    // covers that case instead.
+    if (status != StoragePermissionStatus.denied) return;
+
+    final librarySize = await ref.read(librarySizeProvider.future);
+    if (librarySize > 0 || !mounted) return;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Access Your Music'),
+        content: const Text(
+          'TA MUSIC needs permission to see the audio files on your device. '
+          'This only grants access to audio — nothing else, and everything '
+          'stays on your device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Not Now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) {
+      await _requestPermissionAndScan();
+    }
+  }
+
+  Future<void> _requestPermissionAndScan() async {
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    final status = await repo.requestStoragePermission();
+    if (status == StoragePermissionStatus.granted) {
+      ref.read(libraryScanControllerProvider.notifier).startScan();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final librarySizeAsync = ref.watch(librarySizeProvider);
 
     return Scaffold(
@@ -47,20 +122,91 @@ class HomeScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Something went wrong: $e')),
         data: (size) {
-          if (size == 0) {
-            return EmptyState(
-              icon: Icons.library_music_outlined,
-              title: 'Your library is empty',
-              message: 'Pick folders to scan for music and TA MUSIC will do the rest.',
-              actionLabel: 'Choose folders',
-              onAction: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              ),
-            );
-          }
-          return const _HomeContent();
+          if (size > 0) return const _HomeContent();
+          return Platform.isAndroid
+              ? const _AndroidPermissionEmptyState()
+              : EmptyState(
+                  icon: Icons.library_music_outlined,
+                  title: 'Your library is empty',
+                  message: 'Pick folders to scan for music and TA MUSIC will do the rest.',
+                  actionLabel: 'Choose folders',
+                  onAction: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
+                );
         },
       ),
+    );
+  }
+}
+
+/// Android's empty-library state: permission-first rather than
+/// folder-first, since MediaStore needs no folders to be configured at all
+/// (2026-08-18 MediaStore migration — see library_scanner.dart).
+class _AndroidPermissionEmptyState extends ConsumerStatefulWidget {
+  const _AndroidPermissionEmptyState();
+
+  @override
+  ConsumerState<_AndroidPermissionEmptyState> createState() => _AndroidPermissionEmptyStateState();
+}
+
+class _AndroidPermissionEmptyStateState extends ConsumerState<_AndroidPermissionEmptyState> {
+  StoragePermissionStatus? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshStatus();
+  }
+
+  Future<void> _refreshStatus() async {
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    final status = await repo.checkStoragePermissionStatus();
+    if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _onGrantAccess() async {
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    final status = await repo.requestStoragePermission();
+    if (!mounted) return;
+    setState(() => _status = status);
+    if (status == StoragePermissionStatus.granted) {
+      ref.read(libraryScanControllerProvider.notifier).startScan();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    if (status == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (status == StoragePermissionStatus.granted) {
+      final scanState = ref.watch(libraryScanControllerProvider);
+      final isScanning = scanState != null && !scanState.isDone && scanState.error == null;
+      return EmptyState(
+        icon: Icons.library_music_outlined,
+        title: 'No music found',
+        message: 'TA MUSIC couldn\'t find any audio files on this device yet.',
+        actionLabel: isScanning ? null : 'Rescan library',
+        onAction: isScanning
+            ? null
+            : () => ref.read(libraryScanControllerProvider.notifier).startScan(),
+      );
+    }
+
+    final isPermanentlyDenied = status == StoragePermissionStatus.permanentlyDenied;
+    return EmptyState(
+      icon: Icons.library_music_outlined,
+      title: 'Your library is empty',
+      message: isPermanentlyDenied
+          ? 'TA MUSIC needs permission to see your audio files. Enable it in '
+              'system settings to continue.'
+          : 'TA MUSIC needs permission to see the audio files on your device '
+              '— nothing else, and everything stays on your device.',
+      actionLabel: isPermanentlyDenied ? 'Open Settings' : 'Grant Access',
+      onAction: isPermanentlyDenied ? openAppSettings : _onGrantAccess,
     );
   }
 }

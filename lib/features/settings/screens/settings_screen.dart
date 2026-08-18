@@ -39,8 +39,13 @@ class SettingsScreen extends ConsumerWidget {
           Text('Manage folders', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
           Text(
-            'Choose which folders TA MUSIC scans, and which ones to skip even '
-            'if they\'re inside a scanned folder.',
+            Platform.isAndroid
+                ? 'TA MUSIC already sees every audio file on your device by '
+                    'default. Add folders here only if you want to narrow that '
+                    'down, and exclude folders to skip them even if they\'re '
+                    'inside a scanned one.'
+                : 'Choose which folders TA MUSIC scans, and which ones to skip '
+                    'even if they\'re inside a scanned folder.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: AppSpacing.stackMd),
@@ -49,7 +54,9 @@ class SettingsScreen extends ConsumerWidget {
             child: _FolderSection(
               label: 'SCANNED FOLDERS',
               icon: Icons.folder_rounded,
-              emptyMessage: 'No folders added yet.',
+              emptyMessage: Platform.isAndroid
+                  ? 'None added — scanning everything by default.'
+                  : 'No folders added yet.',
               addLabel: 'Add folder',
               itemsAsync: scanRootsAsync.whenData((roots) => roots.map((r) => r.path).toList()),
               onRemove: (path, index) async {

@@ -12,6 +12,17 @@ import '../models/scan_root.dart';
 import '../services/library_scanner.dart';
 import 'reactive_query.dart';
 
+/// Result of a storage/audio permission check or request.
+enum StoragePermissionStatus {
+  granted,
+  denied,
+
+  /// Android's "don't ask again" state — calling `.request()` again would
+  /// silently no-op instead of showing the OS dialog. Callers should send
+  /// the user to app settings instead of re-prompting.
+  permanentlyDenied,
+}
+
 /// Orchestrates library scanning: manages scan-root/excluded-folder config
 /// and runs [LibraryScanner], notifying the main isolate's
 /// [DatabaseChangeNotifier] when a scan completes (the scanner runs in its
@@ -77,21 +88,52 @@ class LibraryRepository {
     }
   }
 
+  /// Current permission status without prompting — used by the first-launch
+  /// flow to decide whether to show the rationale dialog. Always
+  /// [StoragePermissionStatus.granted] off Android, which has no such
+  /// permission model.
+  Future<StoragePermissionStatus> checkStoragePermissionStatus() async {
+    if (!Platform.isAndroid) return StoragePermissionStatus.granted;
+    final audioStatus = await Permission.audio.status;
+    final storageStatus = await Permission.storage.status;
+    if (audioStatus.isGranted || storageStatus.isGranted) return StoragePermissionStatus.granted;
+    if (audioStatus.isPermanentlyDenied || storageStatus.isPermanentlyDenied) {
+      return StoragePermissionStatus.permanentlyDenied;
+    }
+    return StoragePermissionStatus.denied;
+  }
+
+  /// Requests the storage/audio permission — shared by [scan] and the
+  /// first-launch rationale-dialog flow so there's exactly one place that
+  /// knows how to ask.
+  ///
+  /// permission_handler's Permission.audio is a hard no-op below Android 13
+  /// (its own source explicitly skips pre-TIRAMISU: "we should not handle
+  /// permissions on pre Android TIRAMISU devices") — confirmed 2026-08-17
+  /// testing on a real Android 12 device, where it granted trivially
+  /// without ever prompting. Permission.storage is the
+  /// READ_EXTERNAL_STORAGE-backed counterpart for <=12; it's a no-op the
+  /// other way on 13+. Requesting both and accepting either covers both OS
+  /// versions without needing a device_info plugin to branch on SDK int.
+  Future<StoragePermissionStatus> requestStoragePermission() async {
+    if (!Platform.isAndroid) return StoragePermissionStatus.granted;
+    final statuses = await [Permission.audio, Permission.storage].request();
+    if (statuses.values.any((status) => status.isGranted)) return StoragePermissionStatus.granted;
+    if (statuses.values.any((status) => status.isPermanentlyDenied)) {
+      return StoragePermissionStatus.permanentlyDenied;
+    }
+    return StoragePermissionStatus.denied;
+  }
+
   Stream<ScanProgress> scan() async* {
+    // Requested here, right before a scan, rather than unconditionally at
+    // app launch, so the ask has context instead of firing at a blank
+    // screen — the first-launch flow (HomeScreen) already requests it
+    // proactively with a rationale dialog before this ever runs, so this
+    // is normally an instant no-op by the time a scan actually starts.
     if (Platform.isAndroid) {
-      // permission_handler's Permission.audio is a hard no-op below Android
-      // 13 (its own source explicitly skips pre-TIRAMISU: "we should not
-      // handle permissions on pre Android TIRAMISU devices") — confirmed
-      // 2026-08-17 testing on a real Android 12 device, where it granted
-      // trivially without ever prompting. Permission.storage is the
-      // READ_EXTERNAL_STORAGE-backed counterpart for <=12; it's a no-op the
-      // other way on 13+. Requesting both and accepting either covers both
-      // OS versions without needing a device_info plugin to branch on SDK
-      // int. Requested here, right before a scan, rather than at app
-      // launch, so the ask has context instead of firing at a blank screen.
-      final statuses = await [Permission.audio, Permission.storage].request();
-      final granted = statuses.values.any((status) => status.isGranted);
-      if (!granted) {
+      final status = await requestStoragePermission();
+      if (status != StoragePermissionStatus.granted) {
         yield const ScanProgress(
           scanned: 0,
           total: 0,

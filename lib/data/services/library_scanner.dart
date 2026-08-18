@@ -15,6 +15,7 @@ import '../database/daos/song_dao.dart';
 import '../database/database.dart';
 import '../models/album.dart';
 import '../models/song.dart';
+import 'media_store_scanner.dart';
 
 /// Audio file extensions the scanner considers, matched case-insensitively.
 const kSupportedAudioExtensions = {
@@ -141,18 +142,44 @@ void _scanEntryPoint(_ScanRequest request) async {
     final coversDir = Directory(p.join((await getApplicationSupportDirectory()).path, 'covers'));
     if (!await coversDir.exists()) await coversDir.create(recursive: true);
 
-    // Phase 1: walk and collect candidate file paths (cheap — no tag reads).
+    // Phase 1: collect candidate file paths (cheap — no tag reads), plus
+    // any dates the platform can give us up front. On Android, discovery
+    // goes through MediaStore instead of walking folders — the folder
+    // picker (Storage Access Framework) can't reach many real-world
+    // locations (WhatsApp Audio, Downloads, other apps' music folders)
+    // that MediaStore + READ_MEDIA_AUDIO can. Windows keeps the direct
+    // filesystem walk. Either way, scan_roots (if any) and excluded_folders
+    // apply as filters afterward, and voice-memo heuristics apply to both.
     final candidates = <String>[];
-    for (final root in request.rootPaths) {
-      final dir = Directory(root);
-      if (!await dir.exists()) continue;
-      await for (final entity in dir.list(recursive: true, followLinks: false)) {
-        if (entity is! File) continue;
-        final path = entity.path;
+    final mediaStoreDateAdded = <String, DateTime>{};
+
+    if (Platform.isAndroid) {
+      final mediaStoreFiles = await MediaStoreScanner.queryAudioFiles();
+      for (final file in mediaStoreFiles) {
+        final path = file.path;
         if (!kSupportedAudioExtensions.contains(p.extension(path).toLowerCase())) continue;
+        // Empty scan_roots means "no restriction" on Android — MediaStore
+        // already covers everything, matching how other music apps behave.
+        if (request.rootPaths.isNotEmpty && !isPathUnderAnyRoot(path, request.rootPaths)) continue;
         if (isPathUnderAnyRoot(path, request.excludedPaths)) continue;
         if (_isInVoiceMemoFolder(path)) continue;
+        // MediaStore's index can lag behind actual deletions.
+        if (!await File(path).exists()) continue;
         candidates.add(path);
+        mediaStoreDateAdded[path] = file.dateAdded;
+      }
+    } else {
+      for (final root in request.rootPaths) {
+        final dir = Directory(root);
+        if (!await dir.exists()) continue;
+        await for (final entity in dir.list(recursive: true, followLinks: false)) {
+          if (entity is! File) continue;
+          final path = entity.path;
+          if (!kSupportedAudioExtensions.contains(p.extension(path).toLowerCase())) continue;
+          if (isPathUnderAnyRoot(path, request.excludedPaths)) continue;
+          if (_isInVoiceMemoFolder(path)) continue;
+          candidates.add(path);
+        }
       }
     }
 
@@ -228,7 +255,10 @@ void _scanEntryPoint(_ScanRequest request) async {
         durationMs: durationMs,
         fileSize: stat.size,
         format: p.extension(path).replaceFirst('.', '').toUpperCase(),
-        dateAdded: existing?.dateAdded ?? DateTime.now(),
+        // MediaStore knows when a file actually landed on the device —
+        // more accurate than "now" for songs discovered for the first time
+        // that already existed on the phone before this app did.
+        dateAdded: existing?.dateAdded ?? mediaStoreDateAdded[path] ?? DateTime.now(),
         lastModified: lastModified,
         playCount: existing?.playCount ?? 0,
         lastPlayedAt: existing?.lastPlayedAt,
