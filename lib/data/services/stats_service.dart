@@ -40,9 +40,7 @@ class ListeningStats {
 /// nav drawer per CLAUDE.md. Never associates data with any account —
 /// there isn't one.
 class StatsService {
-  StatsService({required PlayHistoryDao playHistoryDao, required SongDao songDao})
-      : _playHistoryDao = playHistoryDao,
-        _songDao = songDao;
+  StatsService({required this._playHistoryDao, required this._songDao});
 
   final PlayHistoryDao _playHistoryDao;
   final SongDao _songDao;
