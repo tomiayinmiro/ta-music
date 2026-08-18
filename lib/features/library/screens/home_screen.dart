@@ -9,6 +9,7 @@ import '../../../data/providers/library_providers.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/section_header.dart';
+import '../providers/shell_scaffold_key_provider.dart';
 import '../providers/shell_tab_provider.dart';
 import '../screens/recently_added_screen.dart';
 import '../../settings/screens/settings_screen.dart';
@@ -28,11 +29,9 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu_rounded),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          onPressed: () => ref.read(shellScaffoldKeyProvider).currentState?.openDrawer(),
         ),
         title: const Text('TA MUSIC'),
         actions: [

@@ -36,6 +36,7 @@ final libraryRepositoryProvider = FutureProvider<LibraryRepository>((ref) async 
   return LibraryRepository(
     scanRootDao: await ref.watch(scanRootDaoProvider.future),
     excludedFolderDao: await ref.watch(excludedFolderDaoProvider.future),
+    songDao: await ref.watch(songDaoProvider.future),
   );
 });
 

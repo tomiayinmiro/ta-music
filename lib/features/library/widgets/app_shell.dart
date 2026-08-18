@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/scan_progress_banner.dart';
 import '../../favorites/screens/favorites_stub_screen.dart';
+import '../providers/shell_scaffold_key_provider.dart';
 import '../providers/shell_tab_provider.dart';
 import '../screens/home_screen.dart';
 import '../screens/library_gallery_screen.dart';
@@ -18,6 +19,7 @@ class AppShell extends ConsumerWidget {
     final index = ref.watch(shellTabIndexProvider);
 
     return Scaffold(
+      key: ref.watch(shellScaffoldKeyProvider),
       drawer: const AppNavDrawer(),
       body: SafeArea(
         bottom: false,

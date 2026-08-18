@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactory, databaseFactoryFfi;
 
+import '../../core/utils/path_matching.dart';
 import '../database/daos/album_dao.dart';
 import '../database/daos/artist_dao.dart';
 import '../database/daos/song_dao.dart';
@@ -140,8 +141,6 @@ void _scanEntryPoint(_ScanRequest request) async {
     final coversDir = Directory(p.join((await getApplicationSupportDirectory()).path, 'covers'));
     if (!await coversDir.exists()) await coversDir.create(recursive: true);
 
-    final excludedNormalized = request.excludedPaths.map(_normalize).toList();
-
     // Phase 1: walk and collect candidate file paths (cheap — no tag reads).
     final candidates = <String>[];
     for (final root in request.rootPaths) {
@@ -151,7 +150,7 @@ void _scanEntryPoint(_ScanRequest request) async {
         if (entity is! File) continue;
         final path = entity.path;
         if (!kSupportedAudioExtensions.contains(p.extension(path).toLowerCase())) continue;
-        if (_isUnderAny(path, excludedNormalized)) continue;
+        if (isPathUnderAnyRoot(path, request.excludedPaths)) continue;
         if (_isInVoiceMemoFolder(path)) continue;
         candidates.add(path);
       }
@@ -317,18 +316,6 @@ bool _isInVoiceMemoFolder(String path) {
   for (final segment in segments) {
     if (_kVoiceMemoFolderNames.contains(segment)) return true;
     if (segment.contains('recording')) return true;
-  }
-  return false;
-}
-
-String _normalize(String path) => p.normalize(path).toLowerCase();
-
-bool _isUnderAny(String path, List<String> normalizedRoots) {
-  final normalizedPath = _normalize(path);
-  for (final root in normalizedRoots) {
-    if (normalizedPath == root || normalizedPath.startsWith('$root${Platform.pathSeparator}')) {
-      return true;
-    }
   }
   return false;
 }

@@ -1,16 +1,25 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
+import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
+import '../../../core/theme/typography.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/repository_providers.dart';
+import '../../../shared/widgets/glass_container.dart';
 
-/// Minimal folder-management settings, built plainly from sonic_sanctuary_2
-/// tokens (no Stitch design — the full Settings screen is Phase 7 and
-/// explicitly "ask before building" in DESIGN_MAP). This exists now only
-/// because the scanner needs somewhere to be configured; expect it to be
-/// reorganized into the real Settings screen later.
+/// Settings — "Manage folders" pulled forward from Phase 7 (approved
+/// 2026-08-18). No dedicated Stitch design exists for a folder-management
+/// settings screen; the glass-card-with-caps-label treatment here is
+/// borrowed from the one relevant precedent that does exist —
+/// `designs/navigation_drawer_audio_customization`'s "AUDIO ENGINE" drawer
+/// panel — since that's the closest thing sonic_sanctuary_2 offers to a
+/// settings section pattern. The rest of Settings (theme, cache, about)
+/// still isn't built — that's the real Phase 7 scope.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -20,83 +29,57 @@ class SettingsScreen extends ConsumerWidget {
     final excludedAsync = ref.watch(excludedFoldersProvider);
     final scanState = ref.watch(libraryScanControllerProvider);
     final isScanning = scanState != null && !scanState.isDone && scanState.error == null;
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.containerMargin),
         children: [
-          Text('Scan folders', style: Theme.of(context).textTheme.titleMedium),
+          Text('Manage folders', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
-          scanRootsAsync.when(
-            loading: () => const CircularProgressIndicator(),
-            error: (e, _) => Text('Error: $e'),
-            data: (roots) => Column(
-              children: [
-                for (final root in roots)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.folder_rounded),
-                    title: Text(root.path, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.remove_circle_outline_rounded),
-                      onPressed: () async {
-                        final repo = await ref.read(libraryRepositoryProvider.future);
-                        await repo.removeScanRoot(root.id!);
-                      },
-                    ),
-                  ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add folder'),
-                    onPressed: () async {
-                      final path = await FilePicker.getDirectoryPath();
-                      if (path == null) return;
-                      final repo = await ref.read(libraryRepositoryProvider.future);
-                      await repo.addScanRoot(path);
-                    },
-                  ),
-                ),
-              ],
+          Text(
+            'Choose which folders TA MUSIC scans, and which ones to skip even '
+            'if they\'re inside a scanned folder.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.stackMd),
+          GlassContainer(
+            padding: const EdgeInsets.all(AppSpacing.stackMd),
+            child: _FolderSection(
+              label: 'SCANNED FOLDERS',
+              icon: Icons.folder_rounded,
+              emptyMessage: 'No folders added yet.',
+              addLabel: 'Add folder',
+              itemsAsync: scanRootsAsync.whenData((roots) => roots.map((r) => r.path).toList()),
+              onRemove: (path, index) async {
+                final roots = scanRootsAsync.value!;
+                final repo = await ref.read(libraryRepositoryProvider.future);
+                await repo.removeScanRoot(roots[index].id!);
+              },
+              onAdd: () => _addScanFolder(context, ref),
             ),
           ),
-          const SizedBox(height: AppSpacing.stackLg),
-          Text('Excluded folders', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.stackSm),
-          excludedAsync.when(
-            loading: () => const CircularProgressIndicator(),
-            error: (e, _) => Text('Error: $e'),
-            data: (excluded) => Column(
-              children: [
-                for (final folder in excluded)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.folder_off_outlined),
-                    title: Text(folder.path, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.remove_circle_outline_rounded),
-                      onPressed: () async {
-                        final repo = await ref.read(libraryRepositoryProvider.future);
-                        await repo.removeExcludedFolder(folder.id!);
-                      },
-                    ),
-                  ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Exclude a folder'),
-                    onPressed: () async {
-                      final path = await FilePicker.getDirectoryPath();
-                      if (path == null) return;
-                      final repo = await ref.read(libraryRepositoryProvider.future);
-                      await repo.addExcludedFolder(path);
-                    },
-                  ),
-                ),
-              ],
+          const SizedBox(height: AppSpacing.stackMd),
+          GlassContainer(
+            padding: const EdgeInsets.all(AppSpacing.stackMd),
+            child: _FolderSection(
+              label: 'EXCLUDED FOLDERS',
+              icon: Icons.folder_off_outlined,
+              emptyMessage: 'Nothing excluded.',
+              addLabel: 'Exclude a folder',
+              itemsAsync: excludedAsync.whenData((folders) => folders.map((f) => f.path).toList()),
+              onRemove: (path, index) async {
+                final folders = excludedAsync.value!;
+                final repo = await ref.read(libraryRepositoryProvider.future);
+                await repo.removeExcludedFolder(folders[index].id!);
+              },
+              onAdd: () async {
+                final path = await FilePicker.getDirectoryPath();
+                if (path == null) return;
+                final repo = await ref.read(libraryRepositoryProvider.future);
+                await repo.addExcludedFolder(path);
+              },
             ),
           ),
           const SizedBox(height: AppSpacing.stackLg),
@@ -114,6 +97,194 @@ class SettingsScreen extends ConsumerWidget {
             label: Text(isScanning ? 'Scanning…' : 'Rescan library'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _addScanFolder(BuildContext context, WidgetRef ref) async {
+    final path = await FilePicker.getDirectoryPath();
+    if (path == null) return;
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    await repo.addScanRoot(path);
+
+    final subfolders = await repo.listSubfolders(path);
+    if (subfolders.isEmpty || !context.mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _ExcludeSubfolderSheet(parentPath: path, subfolders: subfolders),
+    );
+  }
+}
+
+/// One "SCANNED FOLDERS" / "EXCLUDED FOLDERS" card body: caps label, list of
+/// folder rows with a remove action, and an add button.
+class _FolderSection extends StatelessWidget {
+  const _FolderSection({
+    required this.label,
+    required this.icon,
+    required this.emptyMessage,
+    required this.addLabel,
+    required this.itemsAsync,
+    required this.onRemove,
+    required this.onAdd,
+  });
+
+  final String label;
+  final IconData icon;
+  final String emptyMessage;
+  final String addLabel;
+  final AsyncValue<List<String>> itemsAsync;
+  final void Function(String path, int index) onRemove;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTypography.overline.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: AppSpacing.stackSm),
+        itemsAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.stackMd),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          error: (e, _) => Text('Error: $e', style: theme.textTheme.bodySmall),
+          data: (paths) {
+            if (paths.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
+                child: Text(emptyMessage, style: theme.textTheme.bodySmall),
+              );
+            }
+            return Column(
+              children: [
+                for (var i = 0; i < paths.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: AppSpacing.stackSm),
+                        Expanded(
+                          child: Text(
+                            paths[i],
+                            style: theme.textTheme.bodyMedium,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline_rounded, size: 20),
+                          onPressed: () => onRemove(paths[i], i),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            icon: const Icon(Icons.add_rounded),
+            label: Text(addLabel),
+            onPressed: onAdd,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Exclude a subfolder?" — shown once, right after a new scan root is
+/// added, listing its immediate children only (one level, not a recursive
+/// tree browser — approved 2026-08-18). Each toggle instantly adds/removes
+/// the child from `excluded_folders`; there's no separate save step.
+class _ExcludeSubfolderSheet extends ConsumerStatefulWidget {
+  const _ExcludeSubfolderSheet({required this.parentPath, required this.subfolders});
+
+  final String parentPath;
+  final List<Directory> subfolders;
+
+  @override
+  ConsumerState<_ExcludeSubfolderSheet> createState() => _ExcludeSubfolderSheetState();
+}
+
+class _ExcludeSubfolderSheetState extends ConsumerState<_ExcludeSubfolderSheet> {
+  final Set<String> _excluded = {};
+
+  Future<void> _toggle(String path, bool exclude) async {
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    if (exclude) {
+      await repo.addExcludedFolder(path);
+    } else {
+      await repo.removeExcludedFolderByPath(path);
+    }
+    setState(() {
+      if (exclude) {
+        _excluded.add(path);
+      } else {
+        _excluded.remove(path);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.containerMargin),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Exclude a subfolder?', style: theme.textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.stackSm),
+            Text(
+              'These folders are inside "${p.basename(widget.parentPath)}" — check any '
+              'you don\'t want scanned.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: AppSpacing.stackMd),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final folder in widget.subfolders)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(p.basename(folder.path)),
+                      value: _excluded.contains(folder.path),
+                      onChanged: (value) => _toggle(folder.path, value ?? false),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.stackMd),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: FilledButton.styleFrom(
+                  shape: const RoundedRectangleBorder(borderRadius: AppRadius.borderRadiusRegular),
+                ),
+                child: const Text('Done'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

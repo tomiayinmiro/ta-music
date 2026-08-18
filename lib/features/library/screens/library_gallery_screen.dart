@@ -13,6 +13,7 @@ import '../../../shared/widgets/bulk_action_bar.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/song_list_tile.dart';
+import '../providers/shell_scaffold_key_provider.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
 
@@ -59,11 +60,9 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu_rounded),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          onPressed: () => ref.read(shellScaffoldKeyProvider).currentState?.openDrawer(),
         ),
         title: const Text('TA MUSIC'),
         actions: [

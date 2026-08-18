@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/utils/path_matching.dart';
 import '../../models/song.dart';
 import '../database_change_notifier.dart';
 
@@ -25,6 +26,30 @@ class SongDao {
   /// Marks a song missing (soft-delete) without touching `is_excluded`.
   Future<void> markMissing(int id) async {
     await _db.update('songs', {'is_missing': 1}, where: 'id = ?', whereArgs: [id]);
+    DatabaseChangeNotifier.instance.notify({'songs'});
+  }
+
+  /// Instantly hides every song already in the library whose path falls
+  /// under [folderPath], without waiting for the next scan. Uses
+  /// `is_missing` (not `is_excluded`) — the same field the scanner's own
+  /// reconciliation pass uses for "not a candidate anymore" — so a
+  /// subsequent scan naturally un-hides these songs again if the folder is
+  /// later removed from the excluded list, with no special-casing needed.
+  /// Matching is done in Dart (boundary-aware prefix match), not a SQL
+  /// `LIKE`, to avoid "MusicOld" being treated as a child of "Music".
+  Future<void> markMissingUnderPath(String folderPath) async {
+    final rows = await _db.query('songs', columns: ['id', 'path'], where: 'is_missing = 0');
+    final matchingIds = [
+      for (final row in rows)
+        if (isPathUnderRoot(row['path'] as String, folderPath)) row['id'] as int,
+    ];
+    if (matchingIds.isEmpty) return;
+    await _db.update(
+      'songs',
+      {'is_missing': 1},
+      where: 'id IN (${matchingIds.map((_) => '?').join(',')})',
+      whereArgs: matchingIds,
+    );
     DatabaseChangeNotifier.instance.notify({'songs'});
   }
 

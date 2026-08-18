@@ -6,6 +6,7 @@ import '../../../core/utils/playback_stub.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/song_list_tile.dart';
+import '../../library/providers/shell_scaffold_key_provider.dart';
 
 /// The bottom nav's 3rd tab. Favorites don't get their full designed
 /// screen until Phase 4 (per DESIGN_MAP), but the underlying data — the
@@ -20,7 +21,13 @@ class FavoritesStubScreen extends ConsumerWidget {
     final favoritesAsync = ref.watch(favoriteSongsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Favorites')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          onPressed: () => ref.read(shellScaffoldKeyProvider).currentState?.openDrawer(),
+        ),
+        title: const Text('Favorites'),
+      ),
       body: favoritesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Something went wrong: $e')),

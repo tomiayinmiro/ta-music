@@ -28,4 +28,14 @@ class ExcludedFolderDao {
     await _db.delete('excluded_folders', where: 'id = ?', whereArgs: [id]);
     DatabaseChangeNotifier.instance.notify({'excluded_folders'});
   }
+
+  Future<void> removeByPath(String path) async {
+    await _db.delete('excluded_folders', where: 'path = ?', whereArgs: [path]);
+    DatabaseChangeNotifier.instance.notify({'excluded_folders'});
+  }
+
+  Future<bool> isExcluded(String path) async {
+    final rows = await _db.query('excluded_folders', where: 'path = ?', whereArgs: [path], limit: 1);
+    return rows.isNotEmpty;
+  }
 }

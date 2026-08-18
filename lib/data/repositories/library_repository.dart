@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../database/daos/excluded_folder_dao.dart';
 import '../database/daos/scan_root_dao.dart';
+import '../database/daos/song_dao.dart';
 import '../database/database_change_notifier.dart';
 import '../models/excluded_folder.dart';
 import '../models/scan_root.dart';
@@ -19,10 +20,12 @@ class LibraryRepository {
   LibraryRepository({
     required this._scanRootDao,
     required this._excludedFolderDao,
+    required this._songDao,
   });
 
   final ScanRootDao _scanRootDao;
   final ExcludedFolderDao _excludedFolderDao;
+  final SongDao _songDao;
   final _scanner = LibraryScanner();
 
   Stream<List<ScanRoot>> watchScanRoots() => watchQuery({'scan_roots'}, _scanRootDao.getAll);
@@ -34,9 +37,29 @@ class LibraryRepository {
 
   Future<void> removeScanRoot(int id) => _scanRootDao.remove(id);
 
-  Future<void> addExcludedFolder(String path) => _excludedFolderDao.add(path);
+  /// Adds the folder to the excluded list AND instantly hides any songs
+  /// already in the library that fall under it, rather than waiting for the
+  /// next scan (approved 2026-08-18 — "next scan" is fine for songs
+  /// *reappearing* after un-excluding, but disappearing should be instant).
+  Future<void> addExcludedFolder(String path) async {
+    await _excludedFolderDao.add(path);
+    await _songDao.markMissingUnderPath(path);
+  }
 
   Future<void> removeExcludedFolder(int id) => _excludedFolderDao.remove(id);
+
+  Future<void> removeExcludedFolderByPath(String path) => _excludedFolderDao.removeByPath(path);
+
+  /// Immediate child directories of [path] (one level, no recursion) — used
+  /// by the "Exclude a subfolder?" prompt shown right after adding a scan
+  /// root, so it doesn't accidentally become a full recursive tree browser.
+  Future<List<Directory>> listSubfolders(String path) async {
+    final dir = Directory(path);
+    if (!await dir.exists()) return [];
+    final entries = await dir.list(followLinks: false).toList();
+    return entries.whereType<Directory>().toList()
+      ..sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
+  }
 
   /// Seeds a default scan root on first run. Windows defaults to the user's
   /// Music folder; Android has no single conventional folder across devices
