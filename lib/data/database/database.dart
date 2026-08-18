@@ -33,16 +33,28 @@ void initializeDatabaseFactory() {
 class AppDatabase {
   AppDatabase._();
 
-  static Database? _db;
+  /// The in-flight/resolved open [Future] itself is memoized — not just the
+  /// resolved [Database] — so that two callers racing before the first
+  /// `openDatabase()` call completes both await the *same* Future instead
+  /// of each starting their own. With only the resolved value cached (the
+  /// old `_db ??= await _open()` pattern), a second caller arriving while
+  /// the first `_open()` is still pending would see `_db == null` too and
+  /// open a second connection to the same file — two connections both
+  /// running `onCreate`/`onUpgrade` transactions concurrently collide with
+  /// `DatabaseException(database is locked (code 5 SQLITE_BUSY))` on
+  /// `BEGIN EXCLUSIVE`. This shouldn't normally happen within one isolate
+  /// (Riverpod's `FutureProvider` already dedupes concurrent watchers), but
+  /// it's cheap, correct insurance regardless of what calls this — e.g. if
+  /// `audio_service` ever ends up running its own separate FlutterEngine
+  /// (see `MainActivity.kt` for why it shouldn't).
+  static Future<Database>? _dbFuture;
 
   /// Test-only override for the database path — e.g. sqflite's
   /// [inMemoryDatabasePath] sentinel, so tests never touch path_provider's
   /// platform channel (unavailable outside a widget-test binding) or disk.
   static String? debugDatabasePath;
 
-  static Future<Database> get instance async {
-    return _db ??= await _open();
-  }
+  static Future<Database> get instance => _dbFuture ??= _open();
 
   static Future<Database> _open() async {
     final path = debugDatabasePath ??
@@ -69,8 +81,11 @@ class AppDatabase {
   /// Test-only: closes and drops the cached instance so a fresh in-memory
   /// or temp-file database can be opened for the next test.
   static Future<void> resetForTest() async {
-    await _db?.close();
-    _db = null;
+    final future = _dbFuture;
+    _dbFuture = null;
+    if (future != null) {
+      await (await future).close();
+    }
   }
 }
 

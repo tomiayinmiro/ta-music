@@ -38,8 +38,15 @@ void main() async {
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.tamusic.app.ta_music.playback',
       androidNotificationChannelName: 'TA MUSIC playback',
+      // Must be paired — audio_service asserts on this. Android forces any
+      // active foreground service's notification to be non-dismissible
+      // regardless of androidNotificationOngoing, so "ongoing" only means
+      // anything if the service can actually drop out of foreground state
+      // on pause. Net effect: non-dismissible notification while playing
+      // (lockscreen controls stay put), swipeable + wake lock released
+      // once paused — same pattern Spotify/YouTube Music use.
       androidNotificationOngoing: true,
-      androidStopForegroundOnPause: false,
+      androidStopForegroundOnPause: true,
     ),
   );
 
