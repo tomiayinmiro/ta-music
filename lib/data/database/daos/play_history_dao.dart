@@ -16,6 +16,14 @@ class PlayHistoryDao {
     return id;
   }
 
+  /// Flips a row inserted at the 50%-played mark to `completed: true` once
+  /// the same listen actually reaches the end of the track, without a
+  /// second `play_count` increment — see `AudioPlayerHandler` for the rule.
+  Future<void> markCompleted(int id) async {
+    await _db.update('play_history', {'completed': 1}, where: 'id = ?', whereArgs: [id]);
+    DatabaseChangeNotifier.instance.notify({'play_history'});
+  }
+
   Future<int> totalPlayCount() async {
     final result = await _db.rawQuery('SELECT COUNT(*) AS c FROM play_history');
     return Sqflite.firstIntValue(result) ?? 0;

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/scan_progress_banner.dart';
 import '../../favorites/screens/favorites_stub_screen.dart';
+import '../../now_playing/widgets/mini_player.dart';
 import '../providers/shell_scaffold_key_provider.dart';
 import '../providers/shell_tab_provider.dart';
 import '../screens/home_screen.dart';
@@ -36,6 +37,7 @@ class AppShell extends ConsumerWidget {
               ),
             ),
             const ScanProgressBanner(),
+            const MiniPlayer(),
           ],
         ),
       ),

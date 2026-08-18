@@ -5,6 +5,7 @@ import '../repositories/artist_repository.dart';
 import '../repositories/favorite_repository.dart';
 import '../repositories/library_repository.dart';
 import '../repositories/playlist_repository.dart';
+import '../repositories/settings_repository.dart';
 import '../repositories/song_repository.dart';
 import '../services/stats_service.dart';
 import 'database_providers.dart';
@@ -13,7 +14,10 @@ import 'database_providers.dart';
 // `lib/data/models/song.dart` for why.
 
 final songRepositoryProvider = FutureProvider<SongRepository>((ref) async {
-  return SongRepository(await ref.watch(songDaoProvider.future));
+  return SongRepository(
+    await ref.watch(songDaoProvider.future),
+    await ref.watch(playHistoryDaoProvider.future),
+  );
 });
 
 final albumRepositoryProvider = FutureProvider<AlbumRepository>((ref) async {
@@ -45,4 +49,8 @@ final statsServiceProvider = FutureProvider<StatsService>((ref) async {
     playHistoryDao: await ref.watch(playHistoryDaoProvider.future),
     songDao: await ref.watch(songDaoProvider.future),
   );
+});
+
+final settingsRepositoryProvider = FutureProvider<SettingsRepository>((ref) async {
+  return SettingsRepository(await ref.watch(settingsDaoProvider.future));
 });

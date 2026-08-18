@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 2;
+const int kDatabaseVersion = 3;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -16,6 +16,7 @@ typedef _Migration = Future<void> Function(Database db);
 final Map<int, _Migration> _migrations = {
   1: _migrationV1,
   2: _migrationV2,
+  3: _migrationV3,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -215,4 +216,19 @@ Future<void> _migrationV2(Database db) async {
   await db.execute('CREATE INDEX idx_songs_album_id ON songs (album_id)');
   await db.execute('CREATE INDEX idx_songs_artist_id ON songs (artist_id)');
   await db.execute('CREATE INDEX idx_songs_is_missing ON songs (is_missing)');
+}
+
+/// Phase 3 (Playback engine): a small key-value store for app-level
+/// preferences that don't belong to any single row elsewhere — starting
+/// with "resume playback after an audio-focus interruption ends" (default
+/// off). Kept in sqflite rather than adding `shared_preferences`, staying
+/// consistent with the rest of the app's storage and giving Phase 7's full
+/// Settings screen a home to grow into. Approved 2026-08-18.
+Future<void> _migrationV3(Database db) async {
+  await db.execute('''
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  ''');
 }

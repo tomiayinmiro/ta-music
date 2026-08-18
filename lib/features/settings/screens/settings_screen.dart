@@ -9,6 +9,7 @@ import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../core/theme/typography.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/glass_container.dart';
 
@@ -102,6 +103,28 @@ class SettingsScreen extends ConsumerWidget {
                   )
                 : const Icon(Icons.refresh_rounded),
             label: Text(isScanning ? 'Scanning…' : 'Rescan library'),
+          ),
+          const SizedBox(height: AppSpacing.stackLg),
+          Text('Playback', style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.stackSm),
+          GlassContainer(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.stackMd,
+              vertical: 4,
+            ),
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Resume after interruption'),
+              subtitle: const Text(
+                'Automatically resume playback once a phone call or another '
+                "app's audio ends.",
+              ),
+              value: ref.watch(resumeAfterInterruptionProvider).value ?? false,
+              onChanged: (value) async {
+                final repo = await ref.read(settingsRepositoryProvider.future);
+                await repo.setResumeAfterInterruption(value);
+              },
+            ),
           ),
         ],
       ),

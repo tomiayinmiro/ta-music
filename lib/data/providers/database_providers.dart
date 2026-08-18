@@ -8,6 +8,7 @@ import '../database/daos/favorite_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/playlist_dao.dart';
 import '../database/daos/scan_root_dao.dart';
+import '../database/daos/settings_dao.dart';
 import '../database/daos/song_dao.dart';
 import '../database/database.dart';
 
@@ -47,4 +48,8 @@ final scanRootDaoProvider = FutureProvider<ScanRootDao>((ref) async {
 
 final excludedFolderDaoProvider = FutureProvider<ExcludedFolderDao>((ref) async {
   return ExcludedFolderDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final settingsDaoProvider = FutureProvider<SettingsDao>((ref) async {
+  return SettingsDao(await ref.watch(appDatabaseProvider.future));
 });

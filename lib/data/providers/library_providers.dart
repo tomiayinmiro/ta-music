@@ -53,6 +53,13 @@ final allAlbumsProvider = StreamProvider<List<Album>>((ref) async* {
   yield* repo.watchAll();
 });
 
+/// A single album by id — used wherever only a `Song.albumId` is on hand
+/// and its cover art is needed (the mini player, Now Playing, the queue).
+final albumByIdProvider = FutureProvider.family<Album?, int>((ref, albumId) async {
+  final repo = await ref.watch(albumRepositoryProvider.future);
+  return repo.getById(albumId);
+});
+
 final allArtistsProvider = StreamProvider<List<Artist>>((ref) async* {
   final repo = await ref.watch(artistRepositoryProvider.future);
   yield* repo.watchAll();
@@ -72,6 +79,11 @@ final favoriteSongsProvider = StreamProvider<List<Song>>((ref) async* {
     }
     yield songs;
   }
+});
+
+final isFavoriteProvider = StreamProvider.family<bool, int>((ref, songId) async* {
+  final repo = await ref.watch(favoriteRepositoryProvider.future);
+  yield* repo.watchIsFavorite(songId);
 });
 
 final allPlaylistsProvider = StreamProvider<List<Playlist>>((ref) async* {

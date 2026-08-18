@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/spacing.dart';
-import '../../../core/utils/playback_stub.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/playback_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/song_context_menu.dart';
 import '../../../shared/widgets/song_list_tile.dart';
 
 /// Songs added in the last 14 days. Not a dedicated Stitch design (Phase 2's
@@ -37,7 +38,9 @@ class RecentlyAddedScreen extends ConsumerWidget {
               final song = songs[i];
               return SongListTile(
                 song: song,
-                onTap: () => playSongStub(context, ref, song),
+                onTap: () => ref.read(playbackServiceProvider).playFromSong(song, songs),
+                onLongPress: () => showSongContextMenu(context, song, queueContext: songs),
+                onMore: () => showSongContextMenu(context, song, queueContext: songs),
               );
             },
           );

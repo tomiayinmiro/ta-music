@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/spacing.dart';
-import '../../../core/utils/playback_stub.dart';
 import '../../../data/models/artist.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/playback_providers.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/song_context_menu.dart';
 import '../../../shared/widgets/song_list_tile.dart';
 
 /// No dedicated Stitch design for artist detail exists in Phase 2's
@@ -55,7 +56,12 @@ class ArtistDetailScreen extends ConsumerWidget {
                 ),
               ),
               for (final song in songs)
-                SongListTile(song: song, onTap: () => playSongStub(context, ref, song)),
+                SongListTile(
+                  song: song,
+                  onTap: () => ref.read(playbackServiceProvider).playFromSong(song, songs),
+                  onLongPress: () => showSongContextMenu(context, song, queueContext: songs),
+                  onMore: () => showSongContextMenu(context, song, queueContext: songs),
+                ),
             ],
           );
         },

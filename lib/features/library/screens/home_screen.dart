@@ -6,9 +6,9 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
-import '../../../core/utils/playback_stub.dart';
 import '../../../data/models/song.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../data/repositories/library_repository.dart';
 import '../../../shared/widgets/cover_art.dart';
@@ -275,7 +275,7 @@ class _HomeContent extends ConsumerWidget {
                       return SizedBox(
                         width: 128,
                         child: GestureDetector(
-                          onTap: () => playSongStub(context, ref, song),
+                          onTap: () => ref.read(playbackServiceProvider).playFromSong(song, songs),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -376,7 +376,7 @@ class _ContinueListeningHero extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.stackSm),
                 FilledButton.icon(
-                  onPressed: () => playSongStub(context, ref, song),
+                  onPressed: () => ref.read(playbackServiceProvider).playFromSong(song, [song]),
                   icon: const Icon(Icons.play_arrow_rounded),
                   label: const Text('Play'),
                 ),

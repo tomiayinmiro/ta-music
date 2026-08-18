@@ -14,6 +14,8 @@ const _expectedTables = {
   'excluded_folders',
   'lyrics',
   'custom_eq_presets',
+  'scan_roots',
+  'settings',
 };
 
 void main() {

@@ -3,15 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
-import '../../../core/utils/playback_stub.dart';
 import '../../../data/models/album.dart';
 import '../../../data/models/artist.dart';
 import '../../../data/models/song.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/bulk_action_bar.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/song_context_menu.dart';
 import '../../../shared/widgets/song_list_tile.dart';
 import '../providers/shell_scaffold_key_provider.dart';
 import 'album_detail_screen.dart';
@@ -362,11 +363,14 @@ class _SinglesList extends ConsumerWidget {
                 selectionMode: selectionMode,
                 isSelected: song.id != null && selectedIds.contains(song.id),
                 onLongPress: song.id == null ? null : () => onEnterSelection(song.id!),
+                onMore: selectionMode
+                    ? null
+                    : () => showSongContextMenu(context, song, queueContext: sorted),
                 onTap: () {
                   if (selectionMode) {
                     if (song.id != null) onToggleSelection(song.id!);
                   } else {
-                    playSongStub(context, ref, song);
+                    ref.read(playbackServiceProvider).playFromSong(song, sorted);
                   }
                 },
               );

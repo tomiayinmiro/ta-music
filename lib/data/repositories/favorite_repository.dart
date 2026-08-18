@@ -14,6 +14,9 @@ class FavoriteRepository {
 
   Future<bool> isFavorite(int songId) => _dao.isFavorite(songId);
 
+  Stream<bool> watchIsFavorite(int songId) =>
+      watchQuery({'favorites'}, () => _dao.isFavorite(songId));
+
   Future<void> setFavorite(int songId, bool isFavorite) =>
       isFavorite ? _dao.add(songId, isManual: true) : _dao.remove(songId);
 }

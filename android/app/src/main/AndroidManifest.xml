@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Library scanning permissions (Phase 2). READ_MEDIA_AUDIO covers
          Android 13+ (API 33); READ_EXTERNAL_STORAGE is capped at API 32 for
          older versions. Deliberately not requesting MANAGE_EXTERNAL_STORAGE
@@ -6,6 +7,15 @@
          this app doesn't need since it only reads audio media. -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- Background playback (Phase 3): the foreground service that keeps
+         audio_service alive with the app backgrounded, its Android 14+
+         media-playback service type, the notification permission Android
+         13+ requires before a foreground service's notification can show,
+         and the wake lock so playback doesn't stall when the screen sleeps. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application
         android:label="ta_music"
         android:name="${applicationName}"
@@ -32,6 +42,25 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- audio_service's foreground service (lockscreen/notification
+             controls, MediaSession) and its media-button receiver
+             (Bluetooth/wired play-pause-skip hardware keys). -->
+        <service
+            android:name="com.ryanheise.audioservice.AudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService"/>
+            </intent-filter>
+        </service>
+        <receiver
+            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
