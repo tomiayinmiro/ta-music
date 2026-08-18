@@ -1,0 +1,126 @@
+import 'package:sqflite/sqflite.dart';
+
+import '../../models/song.dart';
+import '../database_change_notifier.dart';
+
+/// Raw CRUD + library-specific queries against the `songs` table.
+class SongDao {
+  SongDao(this._db);
+
+  final Database _db;
+
+  static const _visibleWhere = 'is_excluded = 0 AND is_missing = 0';
+
+  Future<int> insert(Song song) async {
+    final id = await _db.insert('songs', song.toMap());
+    DatabaseChangeNotifier.instance.notify({'songs'});
+    return id;
+  }
+
+  Future<void> update(Song song) async {
+    await _db.update('songs', song.toMap(), where: 'id = ?', whereArgs: [song.id]);
+    DatabaseChangeNotifier.instance.notify({'songs'});
+  }
+
+  /// Marks a song missing (soft-delete) without touching `is_excluded`.
+  Future<void> markMissing(int id) async {
+    await _db.update('songs', {'is_missing': 1}, where: 'id = ?', whereArgs: [id]);
+    DatabaseChangeNotifier.instance.notify({'songs'});
+  }
+
+  Future<void> markExcluded(int id, bool excluded) async {
+    await _db.update('songs', {'is_excluded': excluded ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
+    DatabaseChangeNotifier.instance.notify({'songs'});
+  }
+
+  Future<Song?> getById(int id) async {
+    final rows = await _db.query('songs', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Song.fromMap(rows.first);
+  }
+
+  Future<Song?> getByPath(String path) async {
+    final rows = await _db.query('songs', where: 'path = ?', whereArgs: [path], limit: 1);
+    return rows.isEmpty ? null : Song.fromMap(rows.first);
+  }
+
+  Future<List<Song>> getAllVisible({String orderBy = 'title COLLATE NOCASE'}) async {
+    final rows = await _db.query('songs', where: _visibleWhere, orderBy: orderBy);
+    return rows.map(Song.fromMap).toList();
+  }
+
+  /// All rows regardless of exclusion/missing state — used by the scanner to
+  /// reconcile what's already on disk against what's already in the DB.
+  Future<List<Song>> getAllRaw() async {
+    final rows = await _db.query('songs');
+    return rows.map(Song.fromMap).toList();
+  }
+
+  Future<List<Song>> getByAlbumId(int albumId) async {
+    final rows = await _db.query(
+      'songs',
+      where: '$_visibleWhere AND album_id = ?',
+      whereArgs: [albumId],
+      orderBy: 'disc_number, track_number, title COLLATE NOCASE',
+    );
+    return rows.map(Song.fromMap).toList();
+  }
+
+  Future<List<Song>> getByArtistId(int artistId) async {
+    final rows = await _db.query(
+      'songs',
+      where: '$_visibleWhere AND artist_id = ?',
+      whereArgs: [artistId],
+      orderBy: 'title COLLATE NOCASE',
+    );
+    return rows.map(Song.fromMap).toList();
+  }
+
+  /// Singles: no album tag, or the only track tagged with that album.
+  Future<List<Song>> getSingles({String orderBy = 'title COLLATE NOCASE'}) async {
+    final rows = await _db.rawQuery('''
+      SELECT s.* FROM songs s
+      WHERE s.is_excluded = 0 AND s.is_missing = 0
+        AND (
+          s.album IS NULL OR TRIM(s.album) = '' OR
+          (SELECT COUNT(*) FROM songs s2
+             WHERE s2.is_excluded = 0 AND s2.is_missing = 0
+               AND s2.album_id IS s.album_id) = 1
+        )
+      ORDER BY $orderBy
+    ''');
+    return rows.map(Song.fromMap).toList();
+  }
+
+  Future<List<Song>> getRecentlyAdded({required DateTime since}) async {
+    final rows = await _db.query(
+      'songs',
+      where: '$_visibleWhere AND date_added >= ?',
+      whereArgs: [since.millisecondsSinceEpoch],
+      orderBy: 'date_added DESC',
+    );
+    return rows.map(Song.fromMap).toList();
+  }
+
+  Future<List<Song>> getRecentlyPlayed({int limit = 20}) async {
+    final rows = await _db.query(
+      'songs',
+      where: '$_visibleWhere AND last_played_at IS NOT NULL',
+      orderBy: 'last_played_at DESC',
+      limit: limit,
+    );
+    return rows.map(Song.fromMap).toList();
+  }
+
+  Future<int> countVisible() async {
+    final result = await _db.rawQuery('SELECT COUNT(*) AS c FROM songs WHERE $_visibleWhere');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<void> incrementPlayCount(int songId, DateTime playedAt) async {
+    await _db.rawUpdate(
+      'UPDATE songs SET play_count = play_count + 1, last_played_at = ? WHERE id = ?',
+      [playedAt.millisecondsSinceEpoch, songId],
+    );
+    DatabaseChangeNotifier.instance.notify({'songs'});
+  }
+}

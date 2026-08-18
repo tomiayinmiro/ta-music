@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 1;
+const int kDatabaseVersion = 2;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -15,6 +15,7 @@ typedef _Migration = Future<void> Function(Database db);
 /// [kDatabaseVersion] in order, so this map must stay dense (1, 2, 3, ...).
 final Map<int, _Migration> _migrations = {
   1: _migrationV1,
+  2: _migrationV2,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -188,4 +189,30 @@ Future<void> _migrationV1(Database db) async {
 
   await db.execute('CREATE INDEX idx_songs_is_excluded ON songs (is_excluded)');
   await db.execute('CREATE INDEX idx_play_history_song_id ON play_history (song_id)');
+}
+
+/// Adds the FK links Phase 1's schema was missing (songs.artist/album were
+/// plain text with no relation to the artists/albums tables — grouping by
+/// them required fragile text matching and gave cover-art storage nothing
+/// stable to key off), a `scan_roots` table for the folders the scanner
+/// should walk (Phase 1 only added `excluded_folders`), and `is_missing` to
+/// soft-delete songs whose files vanish between scans without touching
+/// `is_excluded`, which is reserved for voice-memo/user-exclusion rules.
+Future<void> _migrationV2(Database db) async {
+  await db.execute('ALTER TABLE songs ADD COLUMN album_id INTEGER REFERENCES albums (id)');
+  await db.execute('ALTER TABLE songs ADD COLUMN artist_id INTEGER REFERENCES artists (id)');
+  await db.execute(
+      'ALTER TABLE songs ADD COLUMN is_missing INTEGER NOT NULL DEFAULT 0');
+
+  await db.execute('''
+    CREATE TABLE scan_roots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT NOT NULL UNIQUE,
+      added_at INTEGER NOT NULL
+    )
+  ''');
+
+  await db.execute('CREATE INDEX idx_songs_album_id ON songs (album_id)');
+  await db.execute('CREATE INDEX idx_songs_artist_id ON songs (artist_id)');
+  await db.execute('CREATE INDEX idx_songs_is_missing ON songs (is_missing)');
 }
