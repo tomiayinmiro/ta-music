@@ -34,13 +34,15 @@ class MiniPlayer extends ConsumerWidget {
 
     final theme = Theme.of(context);
     final playbackService = ref.read(playbackServiceProvider);
-    final status = ref.watch(playbackStatusProvider).value ?? PlaybackStatus.stopped;
+    final status =
+        ref.watch(playbackStatusProvider).value ?? PlaybackStatus.stopped;
     final isPlaying = status == PlaybackStatus.playing;
-    final hasNext = ref.watch(playbackSnapshotProvider.select((a) => a.value?.hasNext ?? false));
-    final hasPrevious =
-        ref.watch(playbackSnapshotProvider.select((a) => a.value?.hasPrevious ?? false));
-    final coverArtPath =
-        song.albumId != null ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath : null;
+    final hasNext = ref.watch(
+      playbackSnapshotProvider.select((a) => a.value?.hasNext ?? false),
+    );
+    final coverArtPath = song.albumId != null
+        ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath
+        : null;
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(NowPlayingScreen.route()),
@@ -90,15 +92,32 @@ class MiniPlayer extends ConsumerWidget {
                   // tightened via VisualDensity.compact on all three
                   // transport buttons (rather than dropping one) so they
                   // still fit alongside the cover art and title/artist.
+                  //
+                  // Not gated on hasPrevious (Phase 3 completion pass,
+                  // Android): skipToPrevious() already restarts the
+                  // current track when >3s in, which needs no *actual*
+                  // previous track to exist — gating the button on
+                  // hasPrevious disabled it entirely (not even a restart)
+                  // the moment a fresh shuffle tap put the tapped song at
+                  // shuffle position 0, correctly with no track before it.
+                  // A song is loaded here at all (see the early return
+                  // above), so the button is always meaningful.
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.skip_previous_rounded, size: 26),
-                    onPressed: hasPrevious ? playbackService.previous : null,
+                    onPressed: playbackService.previous,
                   ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
-                    icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 28),
-                    onPressed: () => isPlaying ? playbackService.pause() : playbackService.resume(),
+                    icon: Icon(
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: 28,
+                    ),
+                    onPressed: () => isPlaying
+                        ? playbackService.pause()
+                        : playbackService.resume(),
                   ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
@@ -124,7 +143,9 @@ class _MiniPlayerProgressBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
-    final duration = ref.watch(playbackSnapshotProvider.select((a) => a.value?.duration));
+    final duration = ref.watch(
+      playbackSnapshotProvider.select((a) => a.value?.duration),
+    );
     final progress = (duration != null && duration.inMilliseconds > 0)
         ? position.inMilliseconds / duration.inMilliseconds
         : 0.0;

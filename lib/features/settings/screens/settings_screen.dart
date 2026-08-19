@@ -11,6 +11,7 @@ import '../../../core/theme/typography.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
+import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
 
 /// Settings — "Manage folders" pulled forward from Phase 7 (approved
@@ -29,10 +30,11 @@ class SettingsScreen extends ConsumerWidget {
     final scanRootsAsync = ref.watch(scanRootsProvider);
     final excludedAsync = ref.watch(excludedFoldersProvider);
     final scanState = ref.watch(libraryScanControllerProvider);
-    final isScanning = scanState != null && !scanState.isDone && scanState.error == null;
+    final isScanning =
+        scanState != null && !scanState.isDone && scanState.error == null;
     final theme = Theme.of(context);
 
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.containerMargin),
@@ -42,11 +44,11 @@ class SettingsScreen extends ConsumerWidget {
           Text(
             Platform.isAndroid
                 ? 'TA MUSIC already sees every audio file on your device by '
-                    'default. Add folders here only if you want to narrow that '
-                    'down, and exclude folders to skip them even if they\'re '
-                    'inside a scanned one.'
+                      'default. Add folders here only if you want to narrow that '
+                      'down, and exclude folders to skip them even if they\'re '
+                      'inside a scanned one.'
                 : 'Choose which folders TA MUSIC scans, and which ones to skip '
-                    'even if they\'re inside a scanned folder.',
+                      'even if they\'re inside a scanned folder.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: AppSpacing.stackMd),
@@ -59,7 +61,9 @@ class SettingsScreen extends ConsumerWidget {
                   ? 'None added — scanning everything by default.'
                   : 'No folders added yet.',
               addLabel: 'Add folder',
-              itemsAsync: scanRootsAsync.whenData((roots) => roots.map((r) => r.path).toList()),
+              itemsAsync: scanRootsAsync.whenData(
+                (roots) => roots.map((r) => r.path).toList(),
+              ),
               onRemove: (path, index) async {
                 final roots = scanRootsAsync.value!;
                 final repo = await ref.read(libraryRepositoryProvider.future);
@@ -76,7 +80,9 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.folder_off_outlined,
               emptyMessage: 'Nothing excluded.',
               addLabel: 'Exclude a folder',
-              itemsAsync: excludedAsync.whenData((folders) => folders.map((f) => f.path).toList()),
+              itemsAsync: excludedAsync.whenData(
+                (folders) => folders.map((f) => f.path).toList(),
+              ),
               onRemove: (path, index) async {
                 final folders = excludedAsync.value!;
                 final repo = await ref.read(libraryRepositoryProvider.future);
@@ -94,7 +100,9 @@ class SettingsScreen extends ConsumerWidget {
           FilledButton.icon(
             onPressed: isScanning
                 ? null
-                : () => ref.read(libraryScanControllerProvider.notifier).startScan(),
+                : () => ref
+                      .read(libraryScanControllerProvider.notifier)
+                      .startScan(),
             icon: isScanning
                 ? const SizedBox(
                     width: 16,
@@ -143,7 +151,8 @@ class SettingsScreen extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _ExcludeSubfolderSheet(parentPath: path, subfolders: subfolders),
+      builder: (context) =>
+          _ExcludeSubfolderSheet(parentPath: path, subfolders: subfolders),
     );
   }
 }
@@ -177,7 +186,9 @@ class _FolderSection extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppTypography.overline.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: AppTypography.overline.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: AppSpacing.stackSm),
         itemsAsync.when(
@@ -189,7 +200,9 @@ class _FolderSection extends StatelessWidget {
           data: (paths) {
             if (paths.isEmpty) {
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppSpacing.stackSm,
+                ),
                 child: Text(emptyMessage, style: theme.textTheme.bodySmall),
               );
             }
@@ -200,7 +213,11 @@ class _FolderSection extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
                       children: [
-                        Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                        Icon(
+                          icon,
+                          size: 20,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(width: AppSpacing.stackSm),
                         Expanded(
                           child: Text(
@@ -211,7 +228,10 @@ class _FolderSection extends StatelessWidget {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.remove_circle_outline_rounded, size: 20),
+                          icon: const Icon(
+                            Icons.remove_circle_outline_rounded,
+                            size: 20,
+                          ),
                           onPressed: () => onRemove(paths[i], i),
                         ),
                       ],
@@ -240,16 +260,21 @@ class _FolderSection extends StatelessWidget {
 /// tree browser — approved 2026-08-18). Each toggle instantly adds/removes
 /// the child from `excluded_folders`; there's no separate save step.
 class _ExcludeSubfolderSheet extends ConsumerStatefulWidget {
-  const _ExcludeSubfolderSheet({required this.parentPath, required this.subfolders});
+  const _ExcludeSubfolderSheet({
+    required this.parentPath,
+    required this.subfolders,
+  });
 
   final String parentPath;
   final List<Directory> subfolders;
 
   @override
-  ConsumerState<_ExcludeSubfolderSheet> createState() => _ExcludeSubfolderSheetState();
+  ConsumerState<_ExcludeSubfolderSheet> createState() =>
+      _ExcludeSubfolderSheetState();
 }
 
-class _ExcludeSubfolderSheetState extends ConsumerState<_ExcludeSubfolderSheet> {
+class _ExcludeSubfolderSheetState
+    extends ConsumerState<_ExcludeSubfolderSheet> {
   final Set<String> _excluded = {};
 
   Future<void> _toggle(String path, bool exclude) async {
@@ -287,7 +312,9 @@ class _ExcludeSubfolderSheetState extends ConsumerState<_ExcludeSubfolderSheet> 
             ),
             const SizedBox(height: AppSpacing.stackMd),
             ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.4,
+              ),
               child: ListView(
                 shrinkWrap: true,
                 children: [
@@ -297,7 +324,8 @@ class _ExcludeSubfolderSheetState extends ConsumerState<_ExcludeSubfolderSheet> 
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text(p.basename(folder.path)),
                       value: _excluded.contains(folder.path),
-                      onChanged: (value) => _toggle(folder.path, value ?? false),
+                      onChanged: (value) =>
+                          _toggle(folder.path, value ?? false),
                     ),
                 ],
               ),
@@ -308,7 +336,9 @@ class _ExcludeSubfolderSheetState extends ConsumerState<_ExcludeSubfolderSheet> 
               child: FilledButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: FilledButton.styleFrom(
-                  shape: const RoundedRectangleBorder(borderRadius: AppRadius.borderRadiusRegular),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: AppRadius.borderRadiusRegular,
+                  ),
                 ),
                 child: const Text('Done'),
               ),

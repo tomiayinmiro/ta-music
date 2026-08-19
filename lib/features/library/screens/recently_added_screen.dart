@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
+import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/song_context_menu.dart';
 import '../../../shared/widgets/song_list_tile.dart';
@@ -18,7 +19,7 @@ class RecentlyAddedScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final songsAsync = ref.watch(recentlyAddedSongsProvider);
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Recently Added')),
       body: songsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -38,9 +39,12 @@ class RecentlyAddedScreen extends ConsumerWidget {
               final song = songs[i];
               return SongListTile(
                 song: song,
-                onTap: () => ref.read(playbackServiceProvider).playFromSong(song, songs),
-                onLongPress: () => showSongContextMenu(context, song, queueContext: songs),
-                onMore: () => showSongContextMenu(context, song, queueContext: songs),
+                onTap: () =>
+                    ref.read(playbackServiceProvider).playFromSong(song, songs),
+                onLongPress: () =>
+                    showSongContextMenu(context, song, queueContext: songs),
+                onMore: () =>
+                    showSongContextMenu(context, song, queueContext: songs),
               );
             },
           );

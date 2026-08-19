@@ -31,7 +31,8 @@ class LibraryGalleryScreen extends ConsumerStatefulWidget {
   const LibraryGalleryScreen({super.key});
 
   @override
-  ConsumerState<LibraryGalleryScreen> createState() => _LibraryGalleryScreenState();
+  ConsumerState<LibraryGalleryScreen> createState() =>
+      _LibraryGalleryScreenState();
 }
 
 class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
@@ -63,7 +64,8 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.menu_rounded),
-          onPressed: () => ref.read(shellScaffoldKeyProvider).currentState?.openDrawer(),
+          onPressed: () =>
+              ref.read(shellScaffoldKeyProvider).currentState?.openDrawer(),
         ),
         title: const Text('TA MUSIC'),
         actions: [
@@ -76,7 +78,9 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
           IconButton(
             icon: const Icon(Icons.search_rounded),
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Search is coming in a later phase.')),
+              const SnackBar(
+                content: Text('Search is coming in a later phase.'),
+              ),
             ),
           ),
         ],
@@ -90,32 +94,55 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
             ),
             child: Row(
               children: [
-                for (final tab in _GalleryTab.values) ...[
-                  ChoiceChip(
-                    label: Text(switch (tab) {
-                      _GalleryTab.albums => 'Albums',
-                      _GalleryTab.artists => 'Artists',
-                      _GalleryTab.singles => 'Singles',
-                    }),
-                    selected: _tab == tab,
-                    onSelected: (_) => setState(() {
-                      _tab = tab;
-                      _selectionMode = false;
-                      _selectedIds.clear();
-                    }),
+                // A narrow device width or a larger system font scale can
+                // make three chips wider than the available row — seen on
+                // the Tecno BF6 (Phase 3 device pass). Scrollable instead of
+                // a fixed Row so it degrades to a scroll rather than an
+                // overflow on any device/text-scale combination; the sort
+                // button stays outside it, always pinned to the right.
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final tab in _GalleryTab.values) ...[
+                          ChoiceChip(
+                            label: Text(switch (tab) {
+                              _GalleryTab.albums => 'Albums',
+                              _GalleryTab.artists => 'Artists',
+                              _GalleryTab.singles => 'Singles',
+                            }),
+                            selected: _tab == tab,
+                            onSelected: (_) => setState(() {
+                              _tab = tab;
+                              _selectionMode = false;
+                              _selectedIds.clear();
+                            }),
+                          ),
+                          const SizedBox(width: AppSpacing.stackSm),
+                        ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: AppSpacing.stackSm),
-                ],
-                const Spacer(),
+                ),
                 if (_tab == _GalleryTab.singles)
                   PopupMenuButton<_SortOption>(
                     initialValue: _sort,
                     onSelected: (value) => setState(() => _sort = value),
                     icon: const Icon(Icons.sort_rounded),
                     itemBuilder: (context) => const [
-                      PopupMenuItem(value: _SortOption.name, child: Text('Name')),
-                      PopupMenuItem(value: _SortOption.dateAdded, child: Text('Date Added')),
-                      PopupMenuItem(value: _SortOption.fileSize, child: Text('File Size')),
+                      PopupMenuItem(
+                        value: _SortOption.name,
+                        child: Text('Name'),
+                      ),
+                      PopupMenuItem(
+                        value: _SortOption.dateAdded,
+                        child: Text('Date Added'),
+                      ),
+                      PopupMenuItem(
+                        value: _SortOption.fileSize,
+                        child: Text('File Size'),
+                      ),
                     ],
                   ),
               ],
@@ -126,10 +153,18 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
             BulkActionBar(
               selectedCount: _selectedIds.length,
               onClose: _exitSelection,
-              onAddToPlaylist: _selectedIds.isEmpty ? () {} : () => _showAddToPlaylistStub(context),
-              onToggleFavorite: _selectedIds.isEmpty ? () {} : _markSelectedFavorite,
-              onRemoveFromLibrary: _selectedIds.isEmpty ? () {} : _removeSelectedFromLibrary,
-              onShare: _selectedIds.isEmpty ? () {} : () => _showShareStub(context),
+              onAddToPlaylist: _selectedIds.isEmpty
+                  ? () {}
+                  : () => _showAddToPlaylistStub(context),
+              onToggleFavorite: _selectedIds.isEmpty
+                  ? () {}
+                  : _markSelectedFavorite,
+              onRemoveFromLibrary: _selectedIds.isEmpty
+                  ? () {}
+                  : _removeSelectedFromLibrary,
+              onShare: _selectedIds.isEmpty
+                  ? () {}
+                  : () => _showShareStub(context),
             ),
         ],
       ),
@@ -141,24 +176,28 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
       _GalleryTab.albums => _AlbumsGrid(onOpen: _openAlbum),
       _GalleryTab.artists => _ArtistsGrid(onOpen: _openArtist),
       _GalleryTab.singles => _SinglesList(
-          sort: _sort,
-          selectionMode: _selectionMode,
-          selectedIds: _selectedIds,
-          onToggleSelection: _toggleSelection,
-          onEnterSelection: (id) => setState(() {
-            _selectionMode = true;
-            _selectedIds.add(id);
-          }),
-        ),
+        sort: _sort,
+        selectionMode: _selectionMode,
+        selectedIds: _selectedIds,
+        onToggleSelection: _toggleSelection,
+        onEnterSelection: (id) => setState(() {
+          _selectionMode = true;
+          _selectedIds.add(id);
+        }),
+      ),
     };
   }
 
   void _openAlbum(Album album) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => AlbumDetailScreen(album: album)));
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => AlbumDetailScreen(album: album)));
   }
 
   void _openArtist(Artist artist) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ArtistDetailScreen(artist: artist)));
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ArtistDetailScreen(artist: artist)),
+    );
   }
 
   Future<void> _markSelectedFavorite() async {
@@ -184,7 +223,11 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
         padding: EdgeInsets.all(AppSpacing.containerMargin),
         child: SizedBox(
           height: 120,
-          child: Center(child: Text('No playlists yet — playlists arrive in a later phase.')),
+          child: Center(
+            child: Text(
+              'No playlists yet — playlists arrive in a later phase.',
+            ),
+          ),
         ),
       ),
     );
@@ -192,7 +235,9 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
 
   void _showShareStub(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sharing files is coming in a later phase.')),
+      const SnackBar(
+        content: Text('Sharing files is coming in a later phase.'),
+      ),
     );
   }
 }
@@ -217,11 +262,19 @@ class _AlbumsGrid extends ConsumerWidget {
           );
         }
         return RefreshIndicator(
-          onRefresh: () => ref.read(libraryScanControllerProvider.notifier).startScan(),
+          onRefresh: () =>
+              ref.read(libraryScanControllerProvider.notifier).startScan(),
           child: GridView.builder(
             padding: const EdgeInsets.all(AppSpacing.containerMargin),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
+            // Windows Phase 3 completion pass: a hardcoded crossAxisCount: 2
+            // made sense for a phone's narrow portrait width but left each
+            // cover filling half the viewport on a wide desktop window.
+            // MaxCrossAxisExtent instead bounds item *width* and lets the
+            // grid compute however many columns actually fit — dense on
+            // desktop, still 2-ish columns on a phone, no platform check
+            // needed since it's driven by available width either way.
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
               mainAxisSpacing: AppSpacing.stackMd,
               crossAxisSpacing: AppSpacing.stackMd,
               childAspectRatio: 0.78,
@@ -286,11 +339,12 @@ class _ArtistsGrid extends ConsumerWidget {
           );
         }
         return RefreshIndicator(
-          onRefresh: () => ref.read(libraryScanControllerProvider.notifier).startScan(),
+          onRefresh: () =>
+              ref.read(libraryScanControllerProvider.notifier).startScan(),
           child: GridView.builder(
             padding: const EdgeInsets.all(AppSpacing.containerMargin),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
               mainAxisSpacing: AppSpacing.stackMd,
               crossAxisSpacing: AppSpacing.stackMd,
               childAspectRatio: 0.78,
@@ -302,7 +356,13 @@ class _ArtistsGrid extends ConsumerWidget {
                 onTap: () => onOpen(artist),
                 child: Column(
                   children: [
-                    Expanded(child: CoverArt(path: null, size: double.infinity, isCircle: true)),
+                    Expanded(
+                      child: CoverArt(
+                        path: null,
+                        size: double.infinity,
+                        isCircle: true,
+                      ),
+                    ),
                     const SizedBox(height: AppSpacing.stackSm),
                     Text(
                       artist.displayName,
@@ -352,7 +412,8 @@ class _SinglesList extends ConsumerWidget {
         }
         final sorted = _sortSongs(songs, sort);
         return RefreshIndicator(
-          onRefresh: () => ref.read(libraryScanControllerProvider.notifier).startScan(),
+          onRefresh: () =>
+              ref.read(libraryScanControllerProvider.notifier).startScan(),
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
             itemCount: sorted.length,
@@ -362,15 +423,23 @@ class _SinglesList extends ConsumerWidget {
                 song: song,
                 selectionMode: selectionMode,
                 isSelected: song.id != null && selectedIds.contains(song.id),
-                onLongPress: song.id == null ? null : () => onEnterSelection(song.id!),
+                onLongPress: song.id == null
+                    ? null
+                    : () => onEnterSelection(song.id!),
                 onMore: selectionMode
                     ? null
-                    : () => showSongContextMenu(context, song, queueContext: sorted),
+                    : () => showSongContextMenu(
+                        context,
+                        song,
+                        queueContext: sorted,
+                      ),
                 onTap: () {
                   if (selectionMode) {
                     if (song.id != null) onToggleSelection(song.id!);
                   } else {
-                    ref.read(playbackServiceProvider).playFromSong(song, sorted);
+                    ref
+                        .read(playbackServiceProvider)
+                        .playFromSong(song, sorted);
                   }
                 },
               );
@@ -385,7 +454,11 @@ class _SinglesList extends ConsumerWidget {
     final copy = [...songs];
     switch (sort) {
       case _SortOption.name:
-        copy.sort((a, b) => a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase()));
+        copy.sort(
+          (a, b) => a.displayTitle.toLowerCase().compareTo(
+            b.displayTitle.toLowerCase(),
+          ),
+        );
       case _SortOption.dateAdded:
         copy.sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
       case _SortOption.fileSize:

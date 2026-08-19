@@ -5,6 +5,7 @@ import '../../../core/theme/spacing.dart';
 import '../../../data/models/artist.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
+import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/song_context_menu.dart';
@@ -22,7 +23,7 @@ class ArtistDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final songsAsync = ref.watch(songsByArtistProvider(artist.id!));
 
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: Text(artist.displayName)),
       body: songsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -47,7 +48,10 @@ class ArtistDetailScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(artist.displayName, style: Theme.of(context).textTheme.titleLarge),
+                          Text(
+                            artist.displayName,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
                           Text('${songs.length} songs'),
                         ],
                       ),
@@ -58,9 +62,13 @@ class ArtistDetailScreen extends ConsumerWidget {
               for (final song in songs)
                 SongListTile(
                   song: song,
-                  onTap: () => ref.read(playbackServiceProvider).playFromSong(song, songs),
-                  onLongPress: () => showSongContextMenu(context, song, queueContext: songs),
-                  onMore: () => showSongContextMenu(context, song, queueContext: songs),
+                  onTap: () => ref
+                      .read(playbackServiceProvider)
+                      .playFromSong(song, songs),
+                  onLongPress: () =>
+                      showSongContextMenu(context, song, queueContext: songs),
+                  onMore: () =>
+                      showSongContextMenu(context, song, queueContext: songs),
                 ),
             ],
           );

@@ -7,6 +7,15 @@
 
 namespace {
 
+/// The app's UI is built for a mobile-proportioned column (nav rail/bar +
+/// persistent mini-player + stacked screen chrome). Below this floor,
+/// screens with several optional fixed-height elements visible at once
+/// (e.g. the library gallery's tab row + bulk-action bar, with the
+/// mini-player and scan banner also showing) can run out of vertical room.
+/// Values are logical pixels, scaled for DPI in WM_GETMINMAXINFO below.
+constexpr int kMinWindowWidth = 480;
+constexpr int kMinWindowHeight = 640;
+
 /// Window attribute that enables dark mode window decorations.
 ///
 /// Redefined in case the developer's machine has a Windows SDK older than
@@ -133,6 +142,7 @@ bool Win32Window::Create(const std::wstring& title,
   HMONITOR monitor = MonitorFromPoint(target_point, MONITOR_DEFAULTTONEAREST);
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
+  dpi_scale_ = scale_factor;
 
   HWND window = CreateWindow(
       window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
@@ -187,10 +197,27 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_GETMINMAXINFO: {
+      // Uses the cached dpi_scale_ (set in Create(), refreshed on
+      // WM_DPICHANGED) rather than querying fresh here — GetDpiForWindow()
+      // and FlutterDesktopGetDpiForHWND() were both observed (in testing)
+      // to return the unscaled 96 DPI default specifically inside this
+      // handler, likely because WM_GETMINMAXINFO can fire before the
+      // window's per-monitor DPI context is fully resolved.
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      info->ptMinTrackSize.x = Scale(kMinWindowWidth, dpi_scale_);
+      info->ptMinTrackSize.y = Scale(kMinWindowHeight, dpi_scale_);
+      return 0;
+    }
+
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;
       LONG newHeight = newRectSize->bottom - newRectSize->top;
+      UINT new_dpi = HIWORD(wparam);
+      if (new_dpi > 0) {
+        dpi_scale_ = new_dpi / 96.0;
+      }
 
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);

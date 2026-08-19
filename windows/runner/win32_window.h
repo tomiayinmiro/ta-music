@@ -92,6 +92,13 @@ class Win32Window {
 
   bool quit_on_close_ = false;
 
+  // Set once in Create() and kept in sync via WM_DPICHANGED. Read by
+  // WM_GETMINMAXINFO to scale the minimum window size — queried fresh via
+  // GetDpiForWindow() there instead, it was observed (in testing) to
+  // return the unscaled 96 DPI default, likely because that message can
+  // fire before the window's per-monitor DPI context is fully resolved.
+  double dpi_scale_ = 1.0;
+
   // window handle for top level window.
   HWND window_handle_ = nullptr;
 

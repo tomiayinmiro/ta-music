@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
-import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState;
+import 'package:flutter/widgets.dart'
+    show AppLifecycleListener, AppLifecycleState;
 import 'package:just_audio/just_audio.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,6 +18,7 @@ import '../../repositories/song_repository.dart';
 import 'next_aware_shuffle_order.dart';
 import 'playback_handler.dart';
 import 'playback_models.dart';
+import 'relative_queue_index.dart';
 
 /// The single top-level `AudioHandler`, per `audio_service`'s documented
 /// pattern — created once in `main()`, before `runApp`, via
@@ -34,7 +36,9 @@ import 'playback_models.dart';
 /// - [queueSongsStream] carries the full `Song` objects the rest of the app
 ///   actually works with, so `PlaybackService` never has to reconstruct a
 ///   `Song` out of a `MediaItem`.
-class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler implements PlaybackHandler {
+class AudioPlayerHandler extends BaseAudioHandler
+    with QueueHandler, SeekHandler
+    implements PlaybackHandler {
   AudioPlayerHandler({
     required this._songRepository,
     required this._albumRepository,
@@ -70,18 +74,38 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Duration? get duration => _player.duration;
 
   @override
-  Stream<PlaybackStatus> get statusStream => _player.playerStateStream.map(_toStatus);
+  Stream<PlaybackStatus> get statusStream =>
+      _player.playerStateStream.map(_toStatus);
   PlaybackStatus get status => _toStatus(_player.playerState);
 
   @override
   Stream<bool> get shuffleModeStream => _player.shuffleModeEnabledStream;
   @override
-  Stream<PlayerRepeatMode> get repeatModeStream => _player.loopModeStream.map(_toRepeatMode);
+  Stream<PlayerRepeatMode> get repeatModeStream =>
+      _player.loopModeStream.map(_toRepeatMode);
 
   @override
-  bool get hasNext => _player.hasNext;
+  bool get hasNext => _relativeIndex(1) != null;
   @override
-  bool get hasPrevious => _player.hasPrevious;
+  bool get hasPrevious => _relativeIndex(-1) != null;
+
+  /// The [NextAwareShuffleOrder] passed to whichever `setAudioSources` call
+  /// last built the current queue (`playFromSong` or `restoreState`) — kept
+  /// so [_relativeIndex] can read its `indices` directly rather than
+  /// `_player.shuffleIndices`. See [relativeQueueIndex]'s doc for why.
+  NextAwareShuffleOrder? _activeShuffleOrder;
+
+  /// See [relativeQueueIndex] — this class's job is just supplying it the
+  /// state it needs from data we own synchronously, instead of from
+  /// just_audio's own internal bookkeeping.
+  int? _relativeIndex(int offset) => relativeQueueIndex(
+    currentIndex: currentIndex,
+    queueLength: queueSongs.length,
+    loopMode: _player.loopMode,
+    shuffleEnabled: _player.shuffleModeEnabled,
+    shuffleIndices: _activeShuffleOrder?.indices ?? const <int>[],
+    offset: offset,
+  );
 
   // Per-current-item play-count/history tracking state — see `_onPosition`
   // and `_finalizeItemTracking` for the 50%-or-completion rule (CLAUDE.md
@@ -120,14 +144,19 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       unawaited(Permission.notification.request());
     }
 
-    _player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {});
+    _player.playbackEventStream.listen(
+      _broadcastState,
+      onError: (Object e, StackTrace st) {},
+    );
     _player.currentIndexStream.listen(_onIndexChanged);
     _player.positionStream.listen(_onPosition);
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) _finalizeItemTracking();
     });
 
-    _settingsRepository.watchResumeAfterInterruption().listen((value) => _resumeAfterInterruption = value);
+    _settingsRepository.watchResumeAfterInterruption().listen(
+      (value) => _resumeAfterInterruption = value,
+    );
 
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
@@ -139,13 +168,17 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     // still persists the current position.
     _lifecycleListener = AppLifecycleListener(
       onStateChange: (state) {
-        if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+        if (state == AppLifecycleState.paused ||
+            state == AppLifecycleState.detached) {
           unawaited(_savePlaybackState());
         }
       },
     );
 
-    _instrumentationTimer = Timer.periodic(const Duration(minutes: 1), (_) => _logMemorySnapshot());
+    _instrumentationTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _logMemorySnapshot(),
+    );
   }
 
   void _logMemorySnapshot() {
@@ -160,60 +193,65 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   // --- Status/repeat mapping -----------------------------------------
 
   PlaybackStatus _toStatus(PlayerState state) {
-    if (state.processingState == ProcessingState.idle) return PlaybackStatus.stopped;
+    if (state.processingState == ProcessingState.idle)
+      return PlaybackStatus.stopped;
     if (state.processingState == ProcessingState.loading ||
         state.processingState == ProcessingState.buffering) {
       return PlaybackStatus.buffering;
     }
-    if (state.processingState == ProcessingState.completed) return PlaybackStatus.stopped;
+    if (state.processingState == ProcessingState.completed)
+      return PlaybackStatus.stopped;
     return state.playing ? PlaybackStatus.playing : PlaybackStatus.paused;
   }
 
   PlayerRepeatMode _toRepeatMode(LoopMode mode) => switch (mode) {
-        LoopMode.off => PlayerRepeatMode.off,
-        LoopMode.one => PlayerRepeatMode.one,
-        LoopMode.all => PlayerRepeatMode.all,
-      };
+    LoopMode.off => PlayerRepeatMode.off,
+    LoopMode.one => PlayerRepeatMode.one,
+    LoopMode.all => PlayerRepeatMode.all,
+  };
 
   LoopMode _fromRepeatMode(PlayerRepeatMode mode) => switch (mode) {
-        PlayerRepeatMode.off => LoopMode.off,
-        PlayerRepeatMode.one => LoopMode.one,
-        PlayerRepeatMode.all => LoopMode.all,
-      };
+    PlayerRepeatMode.off => LoopMode.off,
+    PlayerRepeatMode.one => LoopMode.one,
+    PlayerRepeatMode.all => LoopMode.all,
+  };
 
   // --- OS-facing state broadcast --------------------------------------
 
   void _broadcastState(PlaybackEvent event) {
     final playing = _player.playing;
-    playbackState.add(playbackState.value.copyWith(
-      controls: [
-        MediaControl.skipToPrevious,
-        if (playing) MediaControl.pause else MediaControl.play,
-        MediaControl.stop,
-        MediaControl.skipToNext,
-      ],
-      systemActions: const {MediaAction.seek},
-      androidCompactActionIndices: const [0, 1, 3],
-      processingState: const {
-        ProcessingState.idle: AudioProcessingState.idle,
-        ProcessingState.loading: AudioProcessingState.loading,
-        ProcessingState.buffering: AudioProcessingState.buffering,
-        ProcessingState.ready: AudioProcessingState.ready,
-        ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
-      repeatMode: switch (_player.loopMode) {
-        LoopMode.off => AudioServiceRepeatMode.none,
-        LoopMode.one => AudioServiceRepeatMode.one,
-        LoopMode.all => AudioServiceRepeatMode.all,
-      },
-      shuffleMode:
-          _player.shuffleModeEnabled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
-      playing: playing,
-      updatePosition: _player.position,
-      bufferedPosition: _player.bufferedPosition,
-      speed: _player.speed,
-      queueIndex: event.currentIndex,
-    ));
+    playbackState.add(
+      playbackState.value.copyWith(
+        controls: [
+          MediaControl.skipToPrevious,
+          if (playing) MediaControl.pause else MediaControl.play,
+          MediaControl.stop,
+          MediaControl.skipToNext,
+        ],
+        systemActions: const {MediaAction.seek},
+        androidCompactActionIndices: const [0, 1, 3],
+        processingState: const {
+          ProcessingState.idle: AudioProcessingState.idle,
+          ProcessingState.loading: AudioProcessingState.loading,
+          ProcessingState.buffering: AudioProcessingState.buffering,
+          ProcessingState.ready: AudioProcessingState.ready,
+          ProcessingState.completed: AudioProcessingState.completed,
+        }[_player.processingState]!,
+        repeatMode: switch (_player.loopMode) {
+          LoopMode.off => AudioServiceRepeatMode.none,
+          LoopMode.one => AudioServiceRepeatMode.one,
+          LoopMode.all => AudioServiceRepeatMode.all,
+        },
+        shuffleMode: _player.shuffleModeEnabled
+            ? AudioServiceShuffleMode.all
+            : AudioServiceShuffleMode.none,
+        playing: playing,
+        updatePosition: _player.position,
+        bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
+        queueIndex: event.currentIndex,
+      ),
+    );
   }
 
   void _onIndexChanged(int? index) {
@@ -232,8 +270,12 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       title: song.displayTitle,
       artist: song.displayArtist,
       album: song.album,
-      duration: song.durationMs != null ? Duration(milliseconds: song.durationMs!) : null,
-      artUri: _coverArtCache[song.albumId] != null ? Uri.file(_coverArtCache[song.albumId]!) : null,
+      duration: song.durationMs != null
+          ? Duration(milliseconds: song.durationMs!)
+          : null,
+      artUri: _coverArtCache[song.albumId] != null
+          ? Uri.file(_coverArtCache[song.albumId]!)
+          : null,
     );
   }
 
@@ -251,7 +293,8 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       _coverArtCache.clear();
     }
     for (final song in songs) {
-      if (song.albumId == null || _coverArtCache.containsKey(song.albumId)) continue;
+      if (song.albumId == null || _coverArtCache.containsKey(song.albumId))
+        continue;
       final album = await _albumRepository.getById(song.albumId!);
       _coverArtCache[song.albumId] = album?.coverArtPath;
     }
@@ -290,7 +333,10 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     _lastPosition = position;
 
     final duration = _player.duration;
-    if (duration == null || duration == Duration.zero || index == null || index >= queueSongs.length) {
+    if (duration == null ||
+        duration == Duration.zero ||
+        index == null ||
+        index >= queueSongs.length) {
       return;
     }
     final song = queueSongs[index];
@@ -302,7 +348,9 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     if (!_countedThisPlay && ratio >= 0.5) {
       _countedThisPlay = true;
       unawaited(
-        _songRepository.recordPlay(song.id!, completed: ratio >= 0.98).then((id) => _playHistoryId = id),
+        _songRepository
+            .recordPlay(song.id!, completed: ratio >= 0.98)
+            .then((id) => _playHistoryId = id),
       );
     }
   }
@@ -349,14 +397,19 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       await _playbackStateRepository.clear();
       return;
     }
-    await _playbackStateRepository.save(PersistedPlaybackState(
-      currentSongId: songs[index].id,
-      positionMs: _player.position.inMilliseconds,
-      queueSongIds: [for (final s in songs) if (s.id != null) s.id!],
-      currentIndex: index,
-      shuffleEnabled: _player.shuffleModeEnabled,
-      repeatMode: _toRepeatMode(_player.loopMode),
-    ));
+    await _playbackStateRepository.save(
+      PersistedPlaybackState(
+        currentSongId: songs[index].id,
+        positionMs: _player.position.inMilliseconds,
+        queueSongIds: [
+          for (final s in songs)
+            if (s.id != null) s.id!,
+        ],
+        currentIndex: index,
+        shuffleEnabled: _player.shuffleModeEnabled,
+        repeatMode: _toRepeatMode(_player.loopMode),
+      ),
+    );
   }
 
   /// Restores the last-saved queue/position/index/shuffle/repeat, without
@@ -380,10 +433,14 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       ...persisted.queueSongIds,
       if (persisted.currentSongId != null) persisted.currentSongId!,
     };
-    final fetchedById = {for (final song in await _songRepository.getByIds(allIds.toList())) song.id!: song};
+    final fetchedById = {
+      for (final song in await _songRepository.getByIds(allIds.toList()))
+        song.id!: song,
+    };
 
     final existenceChecks = await Future.wait([
-      for (final song in fetchedById.values) File(song.path).exists().then((exists) => MapEntry(song.id!, exists)),
+      for (final song in fetchedById.values)
+        File(song.path).exists().then((exists) => MapEntry(song.id!, exists)),
     ]);
     final fileExists = Map.fromEntries(existenceChecks);
 
@@ -395,11 +452,16 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       }
     }
 
-    final currentSong = persisted.currentSongId != null ? fetchedById[persisted.currentSongId] : null;
-    final restoredIndex =
-        currentSong == null ? -1 : resolvedQueue.indexWhere((s) => s.id == currentSong.id);
+    final currentSong = persisted.currentSongId != null
+        ? fetchedById[persisted.currentSongId]
+        : null;
+    final restoredIndex = currentSong == null
+        ? -1
+        : resolvedQueue.indexWhere((s) => s.id == currentSong.id);
 
-    if (currentSong == null || fileExists[currentSong.id] != true || restoredIndex == -1) {
+    if (currentSong == null ||
+        fileExists[currentSong.id] != true ||
+        restoredIndex == -1) {
       await _playbackStateRepository.clear();
       return;
     }
@@ -410,11 +472,14 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     _resetItemTracking(restoredIndex);
 
     final restoredPosition = Duration(milliseconds: persisted.positionMs);
+    _activeShuffleOrder = NextAwareShuffleOrder(
+      getCurrentIndex: () => _player.currentIndex,
+    );
     final duration = await _player.setAudioSources(
       [for (final s in resolvedQueue) AudioSource.uri(Uri.file(s.path))],
       initialIndex: restoredIndex,
       initialPosition: restoredPosition,
-      shuffleOrder: NextAwareShuffleOrder(getCurrentIndex: () => _player.currentIndex),
+      shuffleOrder: _activeShuffleOrder,
     );
     // If the saved position was already past the 50% mark, this listen was
     // necessarily already recorded before the app closed — _onPosition
@@ -459,7 +524,9 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   /// wrongly disabled/inconsistent when tapping deep into a long list.
   @override
   Future<void> playFromSong(Song song, List<Song> sourceList) async {
-    final tappedIndex = sourceList.indexWhere((s) => s.id != null && s.id == song.id);
+    final tappedIndex = sourceList.indexWhere(
+      (s) => s.id != null && s.id == song.id,
+    );
     final newQueue = tappedIndex >= 0 ? sourceList : [song];
     final initialIndex = tappedIndex >= 0 ? tappedIndex : 0;
 
@@ -467,13 +534,39 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     _resetItemTracking(initialIndex);
     _queueSongsSubject.add(newQueue);
     queue.add([for (final s in newQueue) _mediaItemFor(s)]);
+    _activeShuffleOrder = NextAwareShuffleOrder(
+      getCurrentIndex: () => _player.currentIndex,
+    );
     await _player.setAudioSources(
       [for (final s in newQueue) AudioSource.uri(Uri.file(s.path))],
       initialIndex: initialIndex,
       initialPosition: Duration.zero,
-      shuffleOrder: NextAwareShuffleOrder(getCurrentIndex: () => _player.currentIndex),
+      shuffleOrder: _activeShuffleOrder,
     );
+    if (Platform.isWindows && initialIndex != 0) {
+      await _reseekWindowsInitialIndex(initialIndex);
+    }
     await play();
+  }
+
+  /// Windows Phase 3 completion pass: `just_audio_windows`'s native `load`
+  /// handler calls `MediaPlaybackList.MoveTo(initialIndex)` synchronously,
+  /// immediately after assigning the new source to the player — before
+  /// Windows' media pipeline has actually finished opening it. That throws
+  /// ("The request is invalid in the current state", visible in the
+  /// plugin's own native log), and the plugin swallows the error rather
+  /// than surfacing it, silently leaving playback parked on item 0
+  /// regardless of the requested index. A longer playlist takes the
+  /// pipeline longer to open, widening that race — which is why this
+  /// reproduced reliably on the large Singles list but not the much
+  /// smaller Album/Artist track lists. Re-issuing the seek ourselves, as a
+  /// separate call after giving the pipeline a moment, lands correctly
+  /// because it's a genuinely later point in wall-clock time than the
+  /// immediate in-native-callback attempt. Can't fix this in the plugin
+  /// itself — it's vendored third-party code.
+  Future<void> _reseekWindowsInitialIndex(int index) async {
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    await _player.seek(Duration.zero, index: index);
   }
 
   @override
@@ -488,7 +581,10 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Future<void> playNext(Song song) async {
     final insertAt = (currentIndex ?? -1) + 1;
     await _resolveCoverArt([song]);
-    await _player.insertAudioSource(insertAt, AudioSource.uri(Uri.file(song.path)));
+    await _player.insertAudioSource(
+      insertAt,
+      AudioSource.uri(Uri.file(song.path)),
+    );
     final songs = [...queueSongs]..insert(insertAt, song);
     _queueSongsSubject.add(songs);
     final items = [...queue.value]..insert(insertAt, _mediaItemFor(song));
@@ -535,10 +631,12 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   }
 
   @override
-  Future<void> setShuffleEnabled(bool enabled) => _player.setShuffleModeEnabled(enabled);
+  Future<void> setShuffleEnabled(bool enabled) =>
+      _player.setShuffleModeEnabled(enabled);
 
   @override
-  Future<void> setPlayerRepeatMode(PlayerRepeatMode mode) => _player.setLoopMode(_fromRepeatMode(mode));
+  Future<void> setPlayerRepeatMode(PlayerRepeatMode mode) =>
+      _player.setLoopMode(_fromRepeatMode(mode));
 
   // --- BaseAudioHandler overrides the OS can also trigger directly (e.g.
   // Android Auto, Assistant voice commands) — delegate to the same methods
@@ -549,10 +647,12 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       setShuffleEnabled(shuffleMode != AudioServiceShuffleMode.none);
 
   @override
-  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) => setPlayerRepeatMode(switch (repeatMode) {
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) =>
+      setPlayerRepeatMode(switch (repeatMode) {
         AudioServiceRepeatMode.none => PlayerRepeatMode.off,
         AudioServiceRepeatMode.one => PlayerRepeatMode.one,
-        AudioServiceRepeatMode.all || AudioServiceRepeatMode.group => PlayerRepeatMode.all,
+        AudioServiceRepeatMode.all ||
+        AudioServiceRepeatMode.group => PlayerRepeatMode.all,
       });
 
   // --- BaseAudioHandler overrides --------------------------------------
@@ -576,11 +676,15 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Future<void> seek(Duration position) async {
     await _player.seek(position);
     _seekSaveDebounce?.cancel();
-    _seekSaveDebounce = Timer(const Duration(seconds: 2), () => unawaited(_savePlaybackState()));
+    _seekSaveDebounce = Timer(
+      const Duration(seconds: 2),
+      () => unawaited(_savePlaybackState()),
+    );
   }
 
   @override
-  Future<void> skipToQueueItem(int index) => _player.seek(Duration.zero, index: index);
+  Future<void> skipToQueueItem(int index) =>
+      _player.seek(Duration.zero, index: index);
 
   // Bug 5 (device testing pass): skipping a track always resumes
   // playback, regardless of whether the player was paused beforehand —

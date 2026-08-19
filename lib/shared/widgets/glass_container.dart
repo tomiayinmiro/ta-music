@@ -47,7 +47,14 @@ class GlassContainer extends StatelessWidget {
                 color: AppElevation.glassBorderTop,
               ),
             ),
-            child: child,
+            // ListTile/SwitchListTile-family children (e.g. Settings'
+            // "Resume after interruption" toggle) paint their selection
+            // highlight and ink splash on the nearest Material ancestor —
+            // without this, that's whatever Material sits behind this
+            // panel's own BoxDecoration fill, making the effect invisible.
+            // `transparency` gives them a Material right here without
+            // adding a visible surface of its own.
+            child: Material(type: MaterialType.transparency, child: child),
           ),
         ),
       ),
