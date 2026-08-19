@@ -63,6 +63,20 @@ class SongDao {
     return rows.isEmpty ? null : Song.fromMap(rows.first);
   }
 
+  /// Batched — one query for the whole list, not one round-trip per id.
+  /// Bug 10 (device testing pass): `AudioPlayerHandler.restoreState()`
+  /// used to call [getById] in a loop, one row at a time; with queues now
+  /// spanning a whole list (bug 11's fix), that meant hundreds of
+  /// sequential DB round-trips blocking the main isolate before `runApp()`
+  /// could even fire. Returned in whatever order sqflite gives them —
+  /// callers that need the original id order re-sort themselves.
+  Future<List<Song>> getByIds(List<int> ids) async {
+    if (ids.isEmpty) return [];
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await _db.query('songs', where: 'id IN ($placeholders)', whereArgs: ids);
+    return rows.map(Song.fromMap).toList();
+  }
+
   Future<Song?> getByPath(String path) async {
     final rows = await _db.query('songs', where: 'path = ?', whereArgs: [path], limit: 1);
     return rows.isEmpty ? null : Song.fromMap(rows.first);

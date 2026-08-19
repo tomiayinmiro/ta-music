@@ -77,7 +77,7 @@ class SongListTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppSpacing.stackSm),
-            Text(formatDuration(song.duration), style: theme.textTheme.bodySmall),
+            Text(formatDurationOrUnknown(song.durationMs), style: theme.textTheme.bodySmall),
             if (!selectionMode)
               IconButton(
                 icon: const Icon(Icons.more_vert_rounded),

@@ -31,9 +31,10 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
       pageBuilder: (context, animation, secondaryAnimation) => const NowPlayingScreen(),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-              .chain(CurveTween(curve: AppMotion.emphasizedEasing))
-              .animate(animation),
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: AppMotion.emphasizedEasing)).animate(animation),
           child: child,
         );
       },
@@ -46,7 +47,6 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   double _dragOffset = 0;
-  bool _showLyrics = false;
   double? _scrubValue;
 
   @override
@@ -71,28 +71,37 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     final isPlaying = snapshot.status == PlaybackStatus.playing;
     final isFavoriteAsync = song.id != null ? ref.watch(isFavoriteProvider(song.id!)) : null;
     final isFavorite = isFavoriteAsync?.value ?? false;
-    final coverArtPath =
-        song.albumId != null ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath : null;
+    final coverArtPath = song.albumId != null
+        ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath
+        : null;
 
-    return GestureDetector(
-      onVerticalDragUpdate: (details) {
-        setState(() => _dragOffset = (_dragOffset + details.primaryDelta!).clamp(0, 400));
-      },
-      onVerticalDragEnd: (details) {
-        if (_dragOffset > 120 || details.primaryVelocity! > 800) {
-          Navigator.of(context).pop();
-        } else {
-          setState(() => _dragOffset = 0);
-        }
-      },
-      child: AnimatedContainer(
-        duration: _dragOffset == 0 ? AppMotion.standard : Duration.zero,
-        transform: Matrix4.translationValues(0, _dragOffset, 0),
-        child: Scaffold(
-          body: SafeArea(
-            child: Column(
-              children: [
-                Padding(
+    // Bug 9 (device testing pass): the swipe-to-dismiss drag detector used
+    // to wrap the entire screen, including the scrollable content below —
+    // competing in the same gesture arena as the queue/lyrics buttons
+    // living in that content meant taps there were occasionally swallowed
+    // as an accidental micro-drag instead of registering as a tap.
+    // Scoped to just the header now; the down-chevron there (and the
+    // header itself) is still a full-width, reliable way to dismiss, and
+    // the drag *translation* still animates the whole screen.
+    return AnimatedContainer(
+      duration: _dragOffset == 0 ? AppMotion.standard : Duration.zero,
+      transform: Matrix4.translationValues(0, _dragOffset, 0),
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              GestureDetector(
+                onVerticalDragUpdate: (details) {
+                  setState(() => _dragOffset = (_dragOffset + details.primaryDelta!).clamp(0, 400));
+                },
+                onVerticalDragEnd: (details) {
+                  if (_dragOffset > 120 || details.primaryVelocity! > 800) {
+                    Navigator.of(context).pop();
+                  } else {
+                    setState(() => _dragOffset = 0);
+                  }
+                },
+                child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.containerMargin,
                     vertical: AppSpacing.stackSm,
@@ -112,193 +121,195 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.more_horiz_rounded),
-                        onPressed: () => showSongContextMenu(context, song, queueContext: snapshot.queue),
+                        onPressed: () =>
+                            showSongContextMenu(context, song, queueContext: snapshot.queue),
                       ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: AppSpacing.stackMd),
-                        Hero(
-                          tag: 'now_playing_cover',
-                          child: AspectRatio(
-                            aspectRatio: 1,
-                            child: CoverArt(
-                              path: coverArtPath,
-                              size: double.infinity,
-                              borderRadius: AppRadius.borderRadiusXl,
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: AppSpacing.stackMd),
+                      Hero(
+                        tag: 'now_playing_cover',
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: CoverArt(
+                            path: coverArtPath,
+                            size: double.infinity,
+                            borderRadius: AppRadius.borderRadiusXl,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.stackLg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  song.displayTitle,
+                                  style: theme.textTheme.headlineSmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  song.displayArtist,
+                                  style: theme.textTheme.bodyLarge,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: AppSpacing.stackLg),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    song.displayTitle,
-                                    style: theme.textTheme.headlineSmall,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    song.displayArtist,
-                                    style: theme.textTheme.bodyLarge,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
+                          if (song.id != null)
+                            IconButton(
+                              icon: Icon(
+                                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                size: 30,
+                                color: isFavorite ? theme.colorScheme.secondary : null,
                               ),
+                              onPressed: () async {
+                                final repo = await ref.read(favoriteRepositoryProvider.future);
+                                await repo.setFavorite(song.id!, !isFavorite);
+                              },
                             ),
-                            if (song.id != null)
-                              IconButton(
-                                icon: Icon(
-                                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                  size: 30,
-                                  color: isFavorite ? theme.colorScheme.secondary : null,
-                                ),
-                                onPressed: () async {
-                                  final repo = await ref.read(favoriteRepositoryProvider.future);
-                                  await repo.setFavorite(song.id!, !isFavorite);
-                                },
-                              ),
-                          ],
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.stackMd),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
                         ),
-                        const SizedBox(height: AppSpacing.stackMd),
-                        SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 3,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                        child: Slider(
+                          value: (_scrubValue ?? position.inMilliseconds.toDouble()).clamp(
+                            0,
+                            duration.inMilliseconds.toDouble().clamp(1, double.infinity),
                           ),
-                          child: Slider(
-                            value: (_scrubValue ?? position.inMilliseconds.toDouble())
-                                .clamp(0, duration.inMilliseconds.toDouble().clamp(1, double.infinity)),
-                            max: duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                            onChanged: (value) => setState(() => _scrubValue = value),
-                            onChangeEnd: (value) {
-                              playbackService.seek(Duration(milliseconds: value.round()));
-                              setState(() => _scrubValue = null);
-                            },
-                          ),
+                          max: duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+                          onChanged: (value) => setState(() => _scrubValue = value),
+                          onChangeEnd: (value) {
+                            playbackService.seek(Duration(milliseconds: value.round()));
+                            setState(() => _scrubValue = null);
+                          },
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.stackSm),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                formatDuration(
-                                  Duration(milliseconds: (_scrubValue ?? position.inMilliseconds.toDouble()).round()),
-                                ),
-                                style: theme.textTheme.labelSmall,
-                              ),
-                              Text(formatDuration(duration), style: theme.textTheme.labelSmall),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.stackMd),
-                        Row(
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.stackSm),
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            IconButton(
-                              icon: Icon(
-                                Icons.shuffle_rounded,
-                                color: snapshot.shuffleEnabled ? theme.colorScheme.secondary : null,
+                            Text(
+                              formatDuration(
+                                Duration(
+                                  milliseconds: (_scrubValue ?? position.inMilliseconds.toDouble())
+                                      .round(),
+                                ),
                               ),
-                              onPressed: () => playbackService.setShuffleMode(!snapshot.shuffleEnabled),
+                              style: theme.textTheme.labelSmall,
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.skip_previous_rounded, size: 40),
-                              onPressed: snapshot.hasPrevious ? playbackService.previous : null,
-                            ),
-                            _PlayPauseOrb(isPlaying: isPlaying, playbackService: playbackService),
-                            IconButton(
-                              icon: const Icon(Icons.skip_next_rounded, size: 40),
-                              onPressed: snapshot.hasNext ? playbackService.next : null,
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                snapshot.repeatMode == PlayerRepeatMode.one
-                                    ? Icons.repeat_one_rounded
-                                    : Icons.repeat_rounded,
-                                color: snapshot.repeatMode != PlayerRepeatMode.off
-                                    ? theme.colorScheme.secondary
-                                    : null,
-                              ),
-                              onPressed: () => playbackService.setRepeatMode(switch (snapshot.repeatMode) {
-                                PlayerRepeatMode.off => PlayerRepeatMode.all,
-                                PlayerRepeatMode.all => PlayerRepeatMode.one,
-                                PlayerRepeatMode.one => PlayerRepeatMode.off,
-                              }),
-                            ),
+                            Text(formatDuration(duration), style: theme.textTheme.labelSmall),
                           ],
                         ),
-                        const SizedBox(height: AppSpacing.stackMd),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (song.format != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceContainerHighest,
-                                  borderRadius: AppRadius.borderRadiusFull,
-                                ),
-                                child: Text(
-                                  song.format!.toUpperCase(),
-                                  style: theme.textTheme.labelSmall,
-                                ),
-                              ),
-                            const SizedBox(width: AppSpacing.stackMd),
-                            TextButton.icon(
-                              onPressed: () => setState(() => _showLyrics = !_showLyrics),
-                              icon: const Icon(Icons.lyrics_outlined, size: 18),
-                              label: const Text('LYRICS'),
+                      ),
+                      const SizedBox(height: AppSpacing.stackMd),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              Icons.shuffle_rounded,
+                              color: snapshot.shuffleEnabled ? theme.colorScheme.secondary : null,
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.queue_music_rounded),
-                              tooltip: 'Up Next',
-                              onPressed: () => showModalBottomSheet<void>(
-                                context: context,
-                                backgroundColor: Colors.transparent,
-                                isScrollControlled: true,
-                                builder: (_) => const QueueScreen(),
+                            onPressed: () =>
+                                playbackService.setShuffleMode(!snapshot.shuffleEnabled),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.skip_previous_rounded, size: 40),
+                            onPressed: snapshot.hasPrevious ? playbackService.previous : null,
+                          ),
+                          _PlayPauseOrb(isPlaying: isPlaying, playbackService: playbackService),
+                          IconButton(
+                            icon: const Icon(Icons.skip_next_rounded, size: 40),
+                            onPressed: snapshot.hasNext ? playbackService.next : null,
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              snapshot.repeatMode == PlayerRepeatMode.one
+                                  ? Icons.repeat_one_rounded
+                                  : Icons.repeat_rounded,
+                              color: snapshot.repeatMode != PlayerRepeatMode.off
+                                  ? theme.colorScheme.secondary
+                                  : null,
+                            ),
+                            onPressed: () =>
+                                playbackService.setRepeatMode(switch (snapshot.repeatMode) {
+                                  PlayerRepeatMode.off => PlayerRepeatMode.all,
+                                  PlayerRepeatMode.all => PlayerRepeatMode.one,
+                                  PlayerRepeatMode.one => PlayerRepeatMode.off,
+                                }),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.stackMd),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (song.format != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: AppRadius.borderRadiusFull,
+                              ),
+                              child: Text(
+                                song.format!.toUpperCase(),
+                                style: theme.textTheme.labelSmall,
                               ),
                             ),
-                          ],
-                        ),
-                        if (_showLyrics) ...[
-                          const SizedBox(height: AppSpacing.stackMd),
-                          GlassContainer(
-                            padding: const EdgeInsets.all(AppSpacing.containerMargin),
-                            child: SizedBox(
-                              height: 120,
-                              child: Center(
-                                child: Text(
-                                  'Lyrics for this song arrive in Phase 5.',
-                                  style: theme.textTheme.bodyMedium,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
+                          const SizedBox(width: AppSpacing.stackMd),
+                          // Bug 9 (device testing pass): real lyrics are
+                          // Phase 5 scope. Visibly disabled (muted color,
+                          // no toggle behavior) rather than hidden, so
+                          // it's clear this is intentionally inactive —
+                          // tapping explains why instead of doing nothing.
+                          TextButton.icon(
+                            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Lyrics are coming in a later phase.')),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.38),
+                            ),
+                            icon: const Icon(Icons.lyrics_outlined, size: 18),
+                            label: const Text('LYRICS'),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.queue_music_rounded),
+                            tooltip: 'Up Next',
+                            onPressed: () => showModalBottomSheet<void>(
+                              context: context,
+                              backgroundColor: Colors.transparent,
+                              isScrollControlled: true,
+                              builder: (_) => const QueueScreen(),
                             ),
                           ),
                         ],
-                        const SizedBox(height: AppSpacing.stackLg),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: AppSpacing.stackLg),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

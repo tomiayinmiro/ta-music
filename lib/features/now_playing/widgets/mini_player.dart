@@ -12,23 +12,33 @@ import '../screens/now_playing_screen.dart';
 /// Persistent bar shown above the bottom nav on every screen (per CLAUDE.md
 /// Phase 3, deliverable 6). Hides entirely when nothing is queued. Tapping
 /// it opens the full-screen Now Playing experience.
+///
+/// Bug 10 (device testing pass): this widget is mounted on every screen for
+/// the app's whole life, so it matters more than most that it doesn't
+/// rebuild needlessly. It used to watch the full [playbackSnapshotProvider]
+/// — which re-emits on every position tick (~5x/second while playing) — for
+/// its entire subtree, meaning the cover art, title/artist, and all three
+/// transport buttons re-rendered continuously regardless of whether
+/// anything they show had actually changed. Split so only the thin
+/// progress bar (genuinely position-driven) rebuilds that often; song
+/// identity, playing state, and hasNext/hasPrevious are watched narrowly
+/// via `.select()`, which only notifies when the *selected* value changes,
+/// not on every raw stream emission.
 class MiniPlayer extends ConsumerWidget {
   const MiniPlayer({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final snapshotAsync = ref.watch(playbackSnapshotProvider);
-    final snapshot = snapshotAsync.value;
-    final song = snapshot?.currentSong;
-
+    final song = ref.watch(currentSongProvider).value;
     if (song == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
     final playbackService = ref.read(playbackServiceProvider);
-    final isPlaying = snapshot!.status == PlaybackStatus.playing;
-    final progress = (snapshot.duration != null && snapshot.duration!.inMilliseconds > 0)
-        ? snapshot.position.inMilliseconds / snapshot.duration!.inMilliseconds
-        : 0.0;
+    final status = ref.watch(playbackStatusProvider).value ?? PlaybackStatus.stopped;
+    final isPlaying = status == PlaybackStatus.playing;
+    final hasNext = ref.watch(playbackSnapshotProvider.select((a) => a.value?.hasNext ?? false));
+    final hasPrevious =
+        ref.watch(playbackSnapshotProvider.select((a) => a.value?.hasPrevious ?? false));
     final coverArtPath =
         song.albumId != null ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath : null;
 
@@ -39,14 +49,7 @@ class MiniPlayer extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              height: 2,
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                valueColor: AlwaysStoppedAnimation(theme.colorScheme.secondary),
-              ),
-            ),
+            const _MiniPlayerProgressBar(),
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.stackSm,
@@ -83,19 +86,55 @@ class MiniPlayer extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  // Bug 6 (device testing pass): previous was missing here —
+                  // tightened via VisualDensity.compact on all three
+                  // transport buttons (rather than dropping one) so they
+                  // still fit alongside the cover art and title/artist.
                   IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.skip_previous_rounded, size: 26),
+                    onPressed: hasPrevious ? playbackService.previous : null,
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
                     icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 28),
                     onPressed: () => isPlaying ? playbackService.pause() : playbackService.resume(),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.skip_next_rounded, size: 28),
-                    onPressed: snapshot.hasNext ? playbackService.next : null,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.skip_next_rounded, size: 26),
+                    onPressed: hasNext ? playbackService.next : null,
                   ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Isolated so only this ~2px bar rebuilds on every position tick, instead
+/// of the whole mini player.
+class _MiniPlayerProgressBar extends ConsumerWidget {
+  const _MiniPlayerProgressBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
+    final duration = ref.watch(playbackSnapshotProvider.select((a) => a.value?.duration));
+    final progress = (duration != null && duration.inMilliseconds > 0)
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
+
+    return SizedBox(
+      height: 2,
+      child: LinearProgressIndicator(
+        value: progress.clamp(0.0, 1.0),
+        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        valueColor: AlwaysStoppedAnimation(theme.colorScheme.secondary),
       ),
     );
   }

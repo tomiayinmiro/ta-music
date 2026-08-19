@@ -32,7 +32,7 @@ class SongInfoDialog extends StatelessWidget {
       if (song.genre != null && song.genre!.trim().isNotEmpty) ('Genre', song.genre!),
       if (song.year != null) ('Year', '${song.year}'),
       if (song.trackNumber != null) ('Track', '${song.trackNumber}'),
-      ('Duration', formatDuration(song.duration)),
+      ('Duration', formatDurationOrUnknown(song.durationMs)),
       if (song.format != null) ('Format', song.format!.toUpperCase()),
       if (song.sampleRate != null) ('Sample rate', '${(song.sampleRate! / 1000).toStringAsFixed(1)} kHz'),
       if (song.bitRate != null) ('Bit rate', '${song.bitRate} kbps'),

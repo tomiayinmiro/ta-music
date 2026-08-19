@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 3;
+const int kDatabaseVersion = 4;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -17,6 +17,7 @@ final Map<int, _Migration> _migrations = {
   1: _migrationV1,
   2: _migrationV2,
   3: _migrationV3,
+  4: _migrationV4,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -244,6 +245,27 @@ Future<void> _migrationV3(Database db) async {
     CREATE TABLE settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    )
+  ''');
+}
+
+/// Phase 3 completion pass (device-testing bug 3): a single-row table
+/// persisting the playback session — queue, position, index, shuffle/repeat
+/// — so closing and reopening the app restores exactly where the user left
+/// off (paused, never auto-playing) instead of clearing state entirely.
+/// `id` is pinned to 1 by the CHECK constraint; writes always upsert that
+/// one row rather than accumulating history.
+Future<void> _migrationV4(Database db) async {
+  await db.execute('''
+    CREATE TABLE playback_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      current_song_id INTEGER,
+      position_ms INTEGER NOT NULL DEFAULT 0,
+      queue_song_ids TEXT NOT NULL DEFAULT '[]',
+      current_index INTEGER,
+      shuffle_mode INTEGER NOT NULL DEFAULT 0,
+      repeat_mode TEXT NOT NULL DEFAULT 'off',
+      last_saved_at INTEGER
     )
   ''');
 }

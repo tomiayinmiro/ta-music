@@ -4,6 +4,7 @@ import '../repositories/album_repository.dart';
 import '../repositories/artist_repository.dart';
 import '../repositories/favorite_repository.dart';
 import '../repositories/library_repository.dart';
+import '../repositories/playback_state_repository.dart';
 import '../repositories/playlist_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/song_repository.dart';
@@ -53,4 +54,8 @@ final statsServiceProvider = FutureProvider<StatsService>((ref) async {
 
 final settingsRepositoryProvider = FutureProvider<SettingsRepository>((ref) async {
   return SettingsRepository(await ref.watch(settingsDaoProvider.future));
+});
+
+final playbackStateRepositoryProvider = FutureProvider<PlaybackStateRepository>((ref) async {
+  return PlaybackStateRepository(await ref.watch(playbackStateDaoProvider.future));
 });

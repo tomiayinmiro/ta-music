@@ -3,14 +3,18 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState;
 import 'package:just_audio/just_audio.dart';
+import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:rxdart/rxdart.dart';
 
 import '../../models/song.dart';
 import '../../repositories/album_repository.dart';
+import '../../repositories/playback_state_repository.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/song_repository.dart';
+import 'next_aware_shuffle_order.dart';
 import 'playback_handler.dart';
 import 'playback_models.dart';
 
@@ -35,6 +39,7 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     required this._songRepository,
     required this._albumRepository,
     required this._settingsRepository,
+    required this._playbackStateRepository,
   }) {
     _init();
   }
@@ -42,6 +47,9 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   final SongRepository _songRepository;
   final AlbumRepository _albumRepository;
   final SettingsRepository _settingsRepository;
+  final PlaybackStateRepository _playbackStateRepository;
+
+  final _logger = Logger();
 
   final _player = AudioPlayer();
 
@@ -87,6 +95,22 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   bool _resumeAfterInterruption = false;
   bool _pausedByInterruption = false;
 
+  // Debounces position saves from seeking — bug 3 (device testing pass)
+  // asks for this specifically rather than a continuous periodic save, to
+  // avoid writing to disk on every position tick.
+  Timer? _seekSaveDebounce;
+
+  // Bug 1 (device testing pass): periodic lightweight instrumentation so a
+  // recurrence of the "crashes after 30+ minutes" report leaves a trail —
+  // process RSS, queue length, and cache sizes are cheap to sample and are
+  // exactly the numbers needed to tell a real leak from OS memory pressure.
+  Timer? _instrumentationTimer;
+
+  // Keeps the listener instance alive for the app's lifetime — not just a
+  // local variable — so it isn't garbage-collected and silently stops
+  // firing.
+  AppLifecycleListener? _lifecycleListener;
+
   Future<void> _init() async {
     // Android 13+ needs this granted before the foreground service's
     // notification (lockscreen/notification controls) can actually show —
@@ -109,6 +133,28 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     await session.configure(const AudioSessionConfiguration.music());
     session.interruptionEventStream.listen(_onInterruption);
     session.becomingNoisyEventStream.listen((_) => pause());
+
+    // Bug 3: save whenever the app is about to stop being visible/alive,
+    // so a swipe-away-from-recents (which may not hit pause() at all)
+    // still persists the current position.
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+          unawaited(_savePlaybackState());
+        }
+      },
+    );
+
+    _instrumentationTimer = Timer.periodic(const Duration(minutes: 1), (_) => _logMemorySnapshot());
+  }
+
+  void _logMemorySnapshot() {
+    final rssMb = (ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(1);
+    _logger.i(
+      'playback snapshot — rss: ${rssMb}MB, queue: ${queueSongs.length}, '
+      'coverArtCache: ${_coverArtCache.length}, status: $status, '
+      'index: $currentIndex',
+    );
   }
 
   // --- Status/repeat mapping -----------------------------------------
@@ -177,6 +223,7 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     } else {
       mediaItem.add(null);
     }
+    unawaited(_savePlaybackState());
   }
 
   MediaItem _mediaItemFor(Song song) {
@@ -190,9 +237,19 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     );
   }
 
+  // Bug 1 (device testing pass): bounded rather than left to grow for the
+  // app's entire lifetime. Entries are tiny (a nullable path string per
+  // album), so this was never likely to be *the* crash cause on its own,
+  // but there's no reason to let it grow unbounded either — past the cap,
+  // the whole cache is dropped and rebuilt lazily on next lookup, which is
+  // cheap (one DB read per album re-encountered).
+  static const _kMaxCoverArtCacheEntries = 500;
   final Map<int?, String?> _coverArtCache = {};
 
   Future<void> _resolveCoverArt(List<Song> songs) async {
+    if (_coverArtCache.length > _kMaxCoverArtCacheEntries) {
+      _coverArtCache.clear();
+    }
     for (final song in songs) {
       if (song.albumId == null || _coverArtCache.containsKey(song.albumId)) continue;
       final album = await _albumRepository.getById(song.albumId!);
@@ -276,25 +333,145 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     }
   }
 
+  // --- Persistence (bug 3, device testing pass) ------------------------
+  //
+  // Saved on: song change (_onIndexChanged), pause(), a debounced tick
+  // after seek(), and app-lifecycle transitions to paused/detached
+  // (_lifecycleListener in _init()). Restored once at startup via
+  // restoreState(), called from main() before runApp() — the queue is
+  // rebuilt and the player is seeked to the saved position, but play() is
+  // never called, so the app always reopens paused, never auto-playing.
+
+  Future<void> _savePlaybackState() async {
+    final index = currentIndex;
+    final songs = queueSongs;
+    if (index == null || index < 0 || index >= songs.length) {
+      await _playbackStateRepository.clear();
+      return;
+    }
+    await _playbackStateRepository.save(PersistedPlaybackState(
+      currentSongId: songs[index].id,
+      positionMs: _player.position.inMilliseconds,
+      queueSongIds: [for (final s in songs) if (s.id != null) s.id!],
+      currentIndex: index,
+      shuffleEnabled: _player.shuffleModeEnabled,
+      repeatMode: _toRepeatMode(_player.loopMode),
+    ));
+  }
+
+  /// Restores the last-saved queue/position/index/shuffle/repeat, without
+  /// starting playback. Songs whose file no longer exists on disk are
+  /// dropped from the restored queue; if that leaves nothing playable (or
+  /// the saved current song itself is gone), the saved state is cleared
+  /// and the app opens with nothing queued rather than a broken restore.
+  Future<void> restoreState() async {
+    final persisted = await _playbackStateRepository.load();
+    if (persisted == null) return;
+
+    // Bug 10 (device testing pass): this used to call SongRepository.getById
+    // in a loop — one DB round-trip per queued song — plus a synchronous
+    // File.existsSync() per song, all sequential, all on the main isolate,
+    // all before runApp() could fire. With queues now spanning a whole list
+    // (bug 11's fix), a 200-song Singles queue meant ~400 blocking
+    // operations at every cold start — exactly what a 7+ second onCreate
+    // and hundreds of skipped frames looks like. One batched query plus
+    // concurrent, non-blocking existence checks instead.
+    final allIds = {
+      ...persisted.queueSongIds,
+      if (persisted.currentSongId != null) persisted.currentSongId!,
+    };
+    final fetchedById = {for (final song in await _songRepository.getByIds(allIds.toList())) song.id!: song};
+
+    final existenceChecks = await Future.wait([
+      for (final song in fetchedById.values) File(song.path).exists().then((exists) => MapEntry(song.id!, exists)),
+    ]);
+    final fileExists = Map.fromEntries(existenceChecks);
+
+    final resolvedQueue = <Song>[];
+    for (final id in persisted.queueSongIds) {
+      final song = fetchedById[id];
+      if (song != null && fileExists[id] == true) {
+        resolvedQueue.add(song);
+      }
+    }
+
+    final currentSong = persisted.currentSongId != null ? fetchedById[persisted.currentSongId] : null;
+    final restoredIndex =
+        currentSong == null ? -1 : resolvedQueue.indexWhere((s) => s.id == currentSong.id);
+
+    if (currentSong == null || fileExists[currentSong.id] != true || restoredIndex == -1) {
+      await _playbackStateRepository.clear();
+      return;
+    }
+
+    await _resolveCoverArt(resolvedQueue);
+    _queueSongsSubject.add(resolvedQueue);
+    queue.add([for (final s in resolvedQueue) _mediaItemFor(s)]);
+    _resetItemTracking(restoredIndex);
+
+    final restoredPosition = Duration(milliseconds: persisted.positionMs);
+    final duration = await _player.setAudioSources(
+      [for (final s in resolvedQueue) AudioSource.uri(Uri.file(s.path))],
+      initialIndex: restoredIndex,
+      initialPosition: restoredPosition,
+      shuffleOrder: NextAwareShuffleOrder(getCurrentIndex: () => _player.currentIndex),
+    );
+    // If the saved position was already past the 50% mark, this listen was
+    // necessarily already recorded before the app closed — _onPosition
+    // reacts to every position change including seeks, not just active
+    // playback, so it would have already fired last session. Marking it
+    // counted here just prevents a spurious re-count on resume, it doesn't
+    // skip counting a genuinely new listen.
+    if (duration != null &&
+        duration.inMilliseconds > 0 &&
+        restoredPosition.inMilliseconds / duration.inMilliseconds >= 0.5) {
+      _countedThisPlay = true;
+    }
+
+    await _player.setShuffleModeEnabled(persisted.shuffleEnabled);
+    await _player.setLoopMode(_fromRepeatMode(persisted.repeatMode));
+    mediaItem.add(_mediaItemFor(resolvedQueue[restoredIndex]));
+  }
+
+  /// Not invoked anywhere in normal operation — this handler is a
+  /// singleton for the app's lifetime, matching just_audio's own
+  /// recommended pattern for a persistent background player — but gives
+  /// the timers/listener above a documented teardown path rather than
+  /// leaving them as fields nothing ever reads.
+  Future<void> dispose() async {
+    _seekSaveDebounce?.cancel();
+    _instrumentationTimer?.cancel();
+    _lifecycleListener?.dispose();
+    await _player.dispose();
+  }
+
   // --- Queue construction ----------------------------------------------
 
-  /// Builds a fresh queue starting at [song] and running to the end of
-  /// [sourceList] (the tapped song plus everything after it in whatever
-  /// list it was tapped from) — the standard "play from here" convention,
-  /// matching how every song list in the app already reads top-to-bottom.
+  /// Queues the entire [sourceList] — the whole list [song] was tapped
+  /// from (Singles, an album, an artist, Favorites, Recently Added, a
+  /// "Recently Played" shelf...) — with [song] as the current index, not
+  /// just [song] plus whatever came after it. Matches standard music-app
+  /// behavior (Spotify, YouTube Music, Poweramp, Musicolet): previous/next
+  /// can navigate the *whole* list in either direction, and shuffle
+  /// shuffles the whole list rather than only what happened to be after
+  /// the tapped track. Bug 11 (device testing pass) — the previous version
+  /// dropped everything before the tapped song, which is why previous was
+  /// wrongly disabled/inconsistent when tapping deep into a long list.
   @override
   Future<void> playFromSong(Song song, List<Song> sourceList) async {
     final tappedIndex = sourceList.indexWhere((s) => s.id != null && s.id == song.id);
-    final newQueue = tappedIndex >= 0 ? sourceList.sublist(tappedIndex) : [song];
+    final newQueue = tappedIndex >= 0 ? sourceList : [song];
+    final initialIndex = tappedIndex >= 0 ? tappedIndex : 0;
 
     await _resolveCoverArt(newQueue);
-    _resetItemTracking(0);
+    _resetItemTracking(initialIndex);
     _queueSongsSubject.add(newQueue);
     queue.add([for (final s in newQueue) _mediaItemFor(s)]);
     await _player.setAudioSources(
       [for (final s in newQueue) AudioSource.uri(Uri.file(s.path))],
-      initialIndex: 0,
+      initialIndex: initialIndex,
       initialPosition: Duration.zero,
+      shuffleOrder: NextAwareShuffleOrder(getCurrentIndex: () => _player.currentIndex),
     );
     await play();
   }
@@ -384,7 +561,10 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Future<void> play() => _player.play();
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    await _player.pause();
+    unawaited(_savePlaybackState());
+  }
 
   @override
   Future<void> stop() async {
@@ -393,14 +573,36 @@ class AudioPlayerHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    await _player.seek(position);
+    _seekSaveDebounce?.cancel();
+    _seekSaveDebounce = Timer(const Duration(seconds: 2), () => unawaited(_savePlaybackState()));
+  }
 
   @override
   Future<void> skipToQueueItem(int index) => _player.seek(Duration.zero, index: index);
 
+  // Bug 5 (device testing pass): skipping a track always resumes
+  // playback, regardless of whether the player was paused beforehand —
+  // Tomi's stated preference. Applies uniformly everywhere these are
+  // triggered from (Now Playing, mini player, lockscreen, Bluetooth
+  // media buttons, SMTC), since they all funnel through this one handler.
   @override
-  Future<void> skipToNext() => _player.seekToNext();
+  Future<void> skipToNext() async {
+    await _player.seekToNext();
+    await play();
+  }
 
+  // Bug 4: restarts the current track from the beginning if more than 3
+  // seconds in, matching standard music-app "previous" behavior — only
+  // skips to the actual previous track when pressed near the start.
   @override
-  Future<void> skipToPrevious() => _player.seekToPrevious();
+  Future<void> skipToPrevious() async {
+    if (_player.position > const Duration(seconds: 3)) {
+      await seek(Duration.zero);
+    } else {
+      await _player.seekToPrevious();
+    }
+    await play();
+  }
 }

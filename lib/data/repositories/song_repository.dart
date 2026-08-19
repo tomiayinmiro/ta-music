@@ -33,6 +33,8 @@ class SongRepository {
 
   Future<Song?> getById(int id) => _songDao.getById(id);
 
+  Future<List<Song>> getByIds(List<int> ids) => _songDao.getByIds(ids);
+
   Future<void> setExcluded(int id, bool excluded) => _songDao.markExcluded(id, excluded);
 
   /// Records one play: increments `songs.play_count` and inserts a

@@ -16,6 +16,7 @@ const _expectedTables = {
   'custom_eq_presets',
   'scan_roots',
   'settings',
+  'playback_state',
 };
 
 void main() {

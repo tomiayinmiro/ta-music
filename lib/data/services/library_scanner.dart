@@ -34,6 +34,15 @@ const kSupportedAudioExtensions = {
 /// catches variants these exact names miss (e.g. "Screen Recordings").
 const _kVoiceMemoFolderNames = {'recordings', 'voice recorder', 'call recordings'};
 
+/// Matches Android voice-recorder auto-generated filenames — the whole
+/// basename (no extension), nothing else — e.g. "2023-05-01_07.10.01" or
+/// "20230501_071001". Bug 8b (device testing pass): folder-name exclusion
+/// alone didn't catch every OEM voice recorder, so this catches the
+/// pattern regardless of which folder the file landed in.
+final _kVoiceMemoFilenamePattern = RegExp(
+  r'^\d{4}-\d{2}-\d{2}_\d{2}\.\d{2}\.\d{2}$|^\d{8}_\d{6}$',
+);
+
 /// Progress/result snapshot emitted while a scan runs.
 class ScanProgress {
   const ScanProgress({
@@ -152,6 +161,7 @@ void _scanEntryPoint(_ScanRequest request) async {
     // apply as filters afterward, and voice-memo heuristics apply to both.
     final candidates = <String>[];
     final mediaStoreDateAdded = <String, DateTime>{};
+    final mediaStoreDurationMs = <String, int>{};
 
     if (Platform.isAndroid) {
       final mediaStoreFiles = await MediaStoreScanner.queryAudioFiles();
@@ -167,6 +177,7 @@ void _scanEntryPoint(_ScanRequest request) async {
         if (!await File(path).exists()) continue;
         candidates.add(path);
         mediaStoreDateAdded[path] = file.dateAdded;
+        if (file.durationMs != null) mediaStoreDurationMs[path] = file.durationMs!;
       }
     } else {
       for (final root in request.rootPaths) {
@@ -201,11 +212,20 @@ void _scanEntryPoint(_ScanRequest request) async {
       final existing = existingByPath[path];
       seenPaths.add(path);
 
-      // Skip re-reading tags for files that haven't changed since last scan.
+      final looksLikeVoiceMemoName =
+          _kVoiceMemoFilenamePattern.hasMatch(p.basenameWithoutExtension(path));
+
+      // Skip re-reading tags for files that haven't changed since last
+      // scan — except when the existing row still has an unknown duration
+      // or a voice-recorder-style filename, so a rescan actually fixes
+      // already-scanned bug 8a/8b cases instead of leaving them stuck
+      // until the file itself is touched.
       if (existing != null &&
           !existing.isMissing &&
           existing.lastModified != null &&
-          !lastModified.isAfter(existing.lastModified!)) {
+          !lastModified.isAfter(existing.lastModified!) &&
+          (existing.durationMs ?? 0) > 0 &&
+          !looksLikeVoiceMemoName) {
         continue;
       }
 
@@ -216,11 +236,23 @@ void _scanEntryPoint(_ScanRequest request) async {
         tag = null;
       }
 
-      // Voice-memo heuristic (b): short, untagged clips.
-      final durationMs = tag?.duration != null ? tag!.duration! * 1000 : null;
+      // Bug 8a: audiotags returns 0/null duration for some files —
+      // MediaStore's own indexer usually already has an accurate one.
+      final tagDurationMs = tag?.duration != null && tag!.duration! > 0 ? tag.duration! * 1000 : null;
+      final durationMs = tagDurationMs ?? mediaStoreDurationMs[path];
+
+      // Voice-memo heuristic (b): short-or-unknown-duration untagged
+      // clips, or a voice-recorder-style timestamp filename with no
+      // artist tag. A missing duration is treated the same as "short" —
+      // failing to read a duration at all is far more common for voice
+      // memos (minimal/no container metadata) than for real music.
       final hasArtist = (tag?.trackArtist ?? '').trim().isNotEmpty;
       final hasAlbum = (tag?.album ?? '').trim().isNotEmpty;
-      if (durationMs != null && durationMs < 60000 && !hasArtist && !hasAlbum) {
+      final shortOrUnknownDuration = durationMs == null || durationMs < 60000;
+      if (!hasArtist && !hasAlbum && shortOrUnknownDuration) {
+        continue;
+      }
+      if (!hasArtist && looksLikeVoiceMemoName) {
         continue;
       }
 

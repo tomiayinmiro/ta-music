@@ -70,98 +70,115 @@ class QueueScreen extends ConsumerWidget {
                   ),
                 ),
                 Expanded(
-                  child: ListView(
+                  // A single CustomScrollView (not a ListView containing a
+                  // shrinkWrap:true ReorderableListView) — nesting a
+                  // shrink-wrapped scrollable inside another forces it to
+                  // eagerly lay out every item to measure its total height,
+                  // defeating lazy building entirely. That's what made this
+                  // screen hang/crash on queues of 50+ songs. SliverReorderableList
+                  // stays properly virtualized inside one scroll view.
+                  child: CustomScrollView(
                     controller: scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
-                    children: [
-                      if (current != null) ...[
-                        Text(
-                          'NOW PLAYING',
-                          style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.primary),
-                        ),
-                        const SizedBox(height: AppSpacing.stackSm),
-                        _QueueTile(
-                          song: current,
-                          isCurrent: true,
-                          coverArtPath: current.albumId != null
-                              ? ref.watch(albumByIdProvider(current.albumId!)).value?.coverArtPath
-                              : null,
-                        ),
-                        const SizedBox(height: AppSpacing.stackLg),
-                      ],
-                      Text(
-                        'NEXT IN QUEUE',
-                        style: theme.textTheme.labelMedium
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: AppSpacing.stackSm),
-                      if (upcoming.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackLg),
-                          child: Text(
-                            'Nothing queued after this.',
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                        )
-                      else
-                        ReorderableListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          buildDefaultDragHandles: false,
-                          itemCount: upcoming.length,
-                          // `onReorderItem` (not the deprecated `onReorder`)
-                          // already adjusts `newIndex` for the removed item
-                          // at `oldIndex`, matching what `reorderQueue`
-                          // expects — no manual off-by-one correction here.
-                          onReorderItem: (oldIndex, newIndex) {
-                            playbackService.reorderQueue(offset + oldIndex, offset + newIndex);
-                          },
-                          itemBuilder: (context, i) {
-                            final song = upcoming[i];
-                            return Dismissible(
-                              key: ValueKey(song.id ?? song.path),
-                              direction: DismissDirection.horizontal,
-                              background: _SwipeBackground(
-                                alignment: Alignment.centerLeft,
-                                color: theme.colorScheme.secondaryContainer,
-                                icon: Icons.skip_next_rounded,
-                                label: 'Play Next',
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (current != null) ...[
+                                Text(
+                                  'NOW PLAYING',
+                                  style: theme.textTheme.labelMedium
+                                      ?.copyWith(color: theme.colorScheme.primary),
+                                ),
+                                const SizedBox(height: AppSpacing.stackSm),
+                                _QueueTile(
+                                  song: current,
+                                  isCurrent: true,
+                                  coverArtPath: current.albumId != null
+                                      ? ref.watch(albumByIdProvider(current.albumId!)).value?.coverArtPath
+                                      : null,
+                                ),
+                                const SizedBox(height: AppSpacing.stackLg),
+                              ],
+                              Text(
+                                'NEXT IN QUEUE',
+                                style: theme.textTheme.labelMedium
+                                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                               ),
-                              secondaryBackground: _SwipeBackground(
-                                alignment: Alignment.centerRight,
-                                color: theme.colorScheme.errorContainer,
-                                icon: Icons.close_rounded,
-                                label: 'Remove',
-                              ),
-                              confirmDismiss: (direction) async {
-                                if (direction == DismissDirection.startToEnd) {
-                                  // "Play next": move this track to right after
-                                  // the currently playing one instead of
-                                  // actually removing it from the list.
-                                  playbackService.reorderQueue(offset + i, offset);
-                                  return false;
-                                }
-                                return true;
-                              },
-                              onDismissed: (_) => playbackService.removeFromQueue(offset + i),
-                              child: _QueueTile(
-                                song: song,
-                                coverArtPath: song.albumId != null
-                                    ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath
-                                    : null,
-                                dragHandle: ReorderableDragStartListener(
-                                  index: i,
-                                  child: Icon(
-                                    Icons.drag_handle_rounded,
-                                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              const SizedBox(height: AppSpacing.stackSm),
+                              if (upcoming.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackLg),
+                                  child: Text(
+                                    'Nothing queued after this.',
+                                    style: theme.textTheme.bodyMedium,
                                   ),
                                 ),
-                                onTap: () => playbackService.skipToQueueItemAt(offset + i),
-                              ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
-                      const SizedBox(height: AppSpacing.stackLg),
+                      ),
+                      if (upcoming.isNotEmpty)
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
+                          sliver: SliverReorderableList(
+                            itemCount: upcoming.length,
+                            // `onReorderItem` (not the deprecated `onReorder`)
+                            // already adjusts `newIndex` for the removed item
+                            // at `oldIndex`, matching what `reorderQueue`
+                            // expects — no manual off-by-one correction here.
+                            onReorderItem: (oldIndex, newIndex) {
+                              playbackService.reorderQueue(offset + oldIndex, offset + newIndex);
+                            },
+                            itemBuilder: (context, i) {
+                              final song = upcoming[i];
+                              return Dismissible(
+                                key: ValueKey(song.id ?? song.path),
+                                direction: DismissDirection.horizontal,
+                                background: _SwipeBackground(
+                                  alignment: Alignment.centerLeft,
+                                  color: theme.colorScheme.secondaryContainer,
+                                  icon: Icons.skip_next_rounded,
+                                  label: 'Play Next',
+                                ),
+                                secondaryBackground: _SwipeBackground(
+                                  alignment: Alignment.centerRight,
+                                  color: theme.colorScheme.errorContainer,
+                                  icon: Icons.close_rounded,
+                                  label: 'Remove',
+                                ),
+                                confirmDismiss: (direction) async {
+                                  if (direction == DismissDirection.startToEnd) {
+                                    // "Play next": move this track to right after
+                                    // the currently playing one instead of
+                                    // actually removing it from the list.
+                                    playbackService.reorderQueue(offset + i, offset);
+                                    return false;
+                                  }
+                                  return true;
+                                },
+                                onDismissed: (_) => playbackService.removeFromQueue(offset + i),
+                                child: _QueueTile(
+                                  song: song,
+                                  coverArtPath: song.albumId != null
+                                      ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath
+                                      : null,
+                                  dragHandle: ReorderableDragStartListener(
+                                    index: i,
+                                    child: Icon(
+                                      Icons.drag_handle_rounded,
+                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                  onTap: () => playbackService.skipToQueueItemAt(offset + i),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.stackLg)),
                     ],
                   ),
                 ),

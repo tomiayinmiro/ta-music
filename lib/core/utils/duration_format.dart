@@ -1,3 +1,12 @@
+/// Formats a stored `songs.duration_ms` value for display, showing "?"
+/// instead of "0:00" when the duration is genuinely unknown (null or 0 —
+/// bug 8a, device testing pass: a real 0-second track doesn't exist, so a
+/// 0 here always means "couldn't be read", never an actual duration).
+String formatDurationOrUnknown(int? durationMs) {
+  if (durationMs == null || durationMs <= 0) return '?';
+  return formatDuration(Duration(milliseconds: durationMs));
+}
+
 /// Formats a [Duration] as `m:ss`, or `h:mm:ss` once it reaches an hour.
 String formatDuration(Duration d) {
   final hours = d.inHours;

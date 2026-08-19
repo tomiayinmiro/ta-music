@@ -7,6 +7,7 @@ import '../database/daos/excluded_folder_dao.dart';
 import '../database/daos/favorite_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/playlist_dao.dart';
+import '../database/daos/playback_state_dao.dart';
 import '../database/daos/scan_root_dao.dart';
 import '../database/daos/settings_dao.dart';
 import '../database/daos/song_dao.dart';
@@ -52,4 +53,8 @@ final excludedFolderDaoProvider = FutureProvider<ExcludedFolderDao>((ref) async 
 
 final settingsDaoProvider = FutureProvider<SettingsDao>((ref) async {
   return SettingsDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final playbackStateDaoProvider = FutureProvider<PlaybackStateDao>((ref) async {
+  return PlaybackStateDao(await ref.watch(appDatabaseProvider.future));
 });

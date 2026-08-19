@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'data/database/daos/album_dao.dart';
 import 'data/database/daos/play_history_dao.dart';
+import 'data/database/daos/playback_state_dao.dart';
 import 'data/database/daos/settings_dao.dart';
 import 'data/database/daos/song_dao.dart';
 import 'data/database/database.dart';
 import 'data/providers/playback_providers.dart';
 import 'data/repositories/album_repository.dart';
+import 'data/repositories/playback_state_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/repositories/song_repository.dart';
 import 'data/services/audio_service.dart';
@@ -28,12 +30,14 @@ void main() async {
   final songRepository = SongRepository(SongDao(db), PlayHistoryDao(db));
   final albumRepository = AlbumRepository(AlbumDao(db));
   final settingsRepository = SettingsRepository(SettingsDao(db));
+  final playbackStateRepository = PlaybackStateRepository(PlaybackStateDao(db));
 
   final audioHandler = await AudioService.init(
     builder: () => AudioPlayerHandler(
       songRepository: songRepository,
       albumRepository: albumRepository,
       settingsRepository: settingsRepository,
+      playbackStateRepository: playbackStateRepository,
     ),
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.tamusic.app.ta_music.playback',
@@ -49,6 +53,13 @@ void main() async {
       androidStopForegroundOnPause: true,
     ),
   );
+
+  // Bug 3 (device testing pass): restore the last-saved queue/position
+  // before the UI ever shows, so the mini player and Now Playing screen
+  // never render an initial "nothing playing" state that then jumps to
+  // the restored song a frame later. Never starts playback — always
+  // restores paused, per CLAUDE.md's "user chooses when to resume" rule.
+  await audioHandler.restoreState();
 
   runApp(
     ProviderScope(

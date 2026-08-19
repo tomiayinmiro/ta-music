@@ -26,11 +26,22 @@ class CoverArt extends StatelessWidget {
 
     Widget content;
     if (path != null && File(path!).existsSync()) {
+      // Bug 10 (device testing pass): without cacheWidth/cacheHeight,
+      // Image.file decodes at the source file's full resolution — often
+      // several thousand pixels per side for embedded album art — even
+      // when displayed as a 44-48px thumbnail. Every row in every
+      // scrolling list (Gallery, Singles, Queue...) was paying that decode
+      // cost. Scaled to the actual display size × device pixel ratio, so
+      // it still renders crisp.
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final cacheDimension = (size != null && size!.isFinite) ? (size! * dpr).round() : null;
       content = Image.file(
         File(path!),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: cacheDimension,
+        cacheHeight: cacheDimension,
         errorBuilder: (context, error, stack) => _placeholder(context),
       );
     } else {

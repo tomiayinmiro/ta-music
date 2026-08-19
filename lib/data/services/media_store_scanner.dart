@@ -2,22 +2,27 @@ import 'package:flutter/services.dart';
 
 /// One audio file as reported by Android's MediaStore.
 class MediaStoreAudioFile {
-  const MediaStoreAudioFile({required this.path, required this.dateAdded});
+  const MediaStoreAudioFile({required this.path, required this.dateAdded, this.durationMs});
 
   final String path;
   final DateTime dateAdded;
+
+  /// Null when MediaStore doesn't know either — used as a fallback when
+  /// `audiotags` also returns 0/null (bug 8a, device testing pass).
+  final int? durationMs;
 }
 
 /// Thin wrapper around the native Android MediaStore query platform
 /// channel (`MediaStoreScanner.kt`). Android-only — callers must guard
 /// with `Platform.isAndroid`.
 ///
-/// Deliberately returns only path + date-added: MediaStore is used for
-/// *discovery* only, so [LibraryScanner] can re-read full tags per file
-/// via `audiotags` exactly as it already does on Windows, keeping every
-/// downstream step (voice-memo heuristics, cover art, DB upsert) platform-
-/// agnostic. See CLAUDE.md's Phase 2.1 decision for why MediaStore replaces
-/// the folder-picker-only scan on Android: SAF-resolved folders can't reach
+/// Mostly used for *discovery*: [LibraryScanner] re-reads full tags per
+/// file via `audiotags` exactly as it already does on Windows, keeping
+/// most downstream steps (voice-memo heuristics, cover art, DB upsert)
+/// platform-agnostic. Duration is the one field also forwarded from here,
+/// as a fallback for files `audiotags` can't read a duration for. See
+/// CLAUDE.md's Phase 2.1 decision for why MediaStore replaces the
+/// folder-picker-only scan on Android: SAF-resolved folders can't reach
 /// many real-world locations (WhatsApp Audio, Downloads, other apps' music
 /// folders) the way MediaStore + READ_MEDIA_AUDIO can.
 class MediaStoreScanner {
@@ -38,6 +43,7 @@ class MediaStoreScanner {
     return MediaStoreAudioFile(
       path: path,
       dateAdded: DateTime.fromMillisecondsSinceEpoch(dateAddedSeconds * 1000),
+      durationMs: map['durationMs'] as int?,
     );
   }
 }
