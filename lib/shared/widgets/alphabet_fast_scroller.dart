@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -128,7 +129,12 @@ class _AlphabetFastScrollerState extends State<AlphabetFastScroller> {
               padding: const EdgeInsets.only(right: 4),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final barHeight = constraints.maxHeight * 0.72;
+                  // Spans essentially the whole list area (top to just above
+                  // the mini player) — approved 2026-08-20 after the initial
+                  // 0.72 factor made letters too short to tap accurately.
+                  // The small inset keeps rounded corners from clipping
+                  // flush against the top/bottom edges.
+                  final barHeight = math.max(0.0, constraints.maxHeight - 8);
                   return SizedBox(
                     height: constraints.maxHeight,
                     child: Stack(
@@ -150,7 +156,9 @@ class _AlphabetFastScrollerState extends State<AlphabetFastScroller> {
                           },
                           onTapUp: (_) => _endTouch(),
                           child: Container(
-                            width: 18,
+                            // 1.5x the original 18 — approved 2026-08-20,
+                            // the original was too thin to tap accurately.
+                            width: 27,
                             height: barHeight,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.75),
@@ -180,7 +188,7 @@ class _AlphabetFastScrollerState extends State<AlphabetFastScroller> {
                           ),
                         ),
                         if (_dragging && _activeLetter != null)
-                          Positioned(right: 32, child: _LetterBubble(letter: _activeLetter!)),
+                          Positioned(right: 41, child: _LetterBubble(letter: _activeLetter!)),
                       ],
                     ),
                   );
