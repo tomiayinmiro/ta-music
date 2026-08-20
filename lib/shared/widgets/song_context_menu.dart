@@ -7,8 +7,10 @@ import '../../data/models/song.dart';
 import '../../data/providers/library_providers.dart';
 import '../../data/providers/playback_providers.dart';
 import '../../data/providers/repository_providers.dart';
+import '../../features/library/providers/shell_tab_provider.dart';
 import '../../features/library/screens/album_detail_screen.dart';
 import '../../features/library/screens/artist_detail_screen.dart';
+import 'add_to_playlist_sheet.dart';
 import 'cover_art.dart';
 import 'glass_container.dart';
 import 'song_info_dialog.dart';
@@ -154,12 +156,12 @@ class _SongContextMenuState extends ConsumerState<_SongContextMenu> {
               _ActionTile(
                 icon: Icons.playlist_add_rounded,
                 label: 'Add to Playlist',
-                onTap: () {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(outer).showSnackBar(
-                    const SnackBar(content: Text('Playlists arrive in a later phase.')),
-                  );
-                },
+                onTap: song.id == null
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        showAddToPlaylistSheet(outer, songIds: [song.id!]);
+                      },
               ),
               if (song.artistId != null)
                 _ActionTile(
@@ -203,6 +205,18 @@ class _SongContextMenuState extends ConsumerState<_SongContextMenu> {
                         sheetNavigator.pop();
                         await repo.setFavorite(song.id!, next);
                       },
+              ),
+              _ActionTile(
+                icon: Icons.favorite_outline_rounded,
+                label: 'Go to Favorites',
+                // Navigation shortcut only — distinct from the toggle above.
+                // Pops back to the root route (a no-op if already there) so
+                // switching the bottom-nav tab is guaranteed visible.
+                onTap: () {
+                  Navigator.of(context).pop();
+                  ref.read(shellTabIndexProvider.notifier).set(2);
+                  Navigator.of(outer).popUntil((route) => route.isFirst);
+                },
               ),
               _ActionTile(
                 icon: Icons.info_outline_rounded,

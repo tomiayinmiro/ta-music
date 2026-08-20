@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/scan_progress_banner.dart';
-import '../../favorites/screens/favorites_stub_screen.dart';
+import '../../favorites/screens/favorites_screen.dart';
 import '../../now_playing/widgets/mini_player.dart';
 import '../providers/shell_scaffold_key_provider.dart';
 import '../providers/shell_tab_provider.dart';
@@ -32,7 +32,7 @@ class AppShell extends ConsumerWidget {
                 children: const [
                   HomeScreen(),
                   LibraryGalleryScreen(),
-                  FavoritesStubScreen(),
+                  FavoritesScreen(),
                 ],
               ),
             ),

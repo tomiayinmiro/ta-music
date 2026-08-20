@@ -6,6 +6,7 @@ import '../models/excluded_folder.dart';
 import '../models/playlist.dart';
 import '../models/scan_root.dart';
 import '../models/song.dart';
+import '../repositories/playlist_repository.dart';
 import '../services/library_scanner.dart';
 import '../services/stats_service.dart';
 import 'repository_providers.dart';
@@ -89,6 +90,23 @@ final isFavoriteProvider = StreamProvider.family<bool, int>((ref, songId) async*
 final allPlaylistsProvider = StreamProvider<List<Playlist>>((ref) async* {
   final repo = await ref.watch(playlistRepositoryProvider.future);
   yield* repo.watchAll();
+});
+
+/// Playlists list screen — each entry paired with its song count + total
+/// duration, computed alongside the list rather than a per-row round-trip.
+final allPlaylistSummariesProvider = StreamProvider<List<PlaylistSummary>>((ref) async* {
+  final repo = await ref.watch(playlistRepositoryProvider.future);
+  yield* repo.watchAllWithSummaries();
+});
+
+final playlistByIdProvider = StreamProvider.family<Playlist?, int>((ref, id) async* {
+  final repo = await ref.watch(playlistRepositoryProvider.future);
+  yield* repo.watchById(id);
+});
+
+final playlistSongsProvider = StreamProvider.family<List<Song>, int>((ref, playlistId) async* {
+  final repo = await ref.watch(playlistRepositoryProvider.future);
+  yield* repo.watchSongs(playlistId);
 });
 
 final scanRootsProvider = StreamProvider<List<ScanRoot>>((ref) async* {

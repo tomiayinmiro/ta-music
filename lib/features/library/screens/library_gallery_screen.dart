@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +11,8 @@ import '../../../data/models/song.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
+import '../../../shared/widgets/add_to_playlist_sheet.dart';
+import '../../../shared/widgets/alphabet_fast_scroller.dart';
 import '../../../shared/widgets/bulk_action_bar.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -17,6 +21,23 @@ import '../../../shared/widgets/song_list_tile.dart';
 import '../providers/shell_scaffold_key_provider.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
+
+const double _kSinglesRowHeight = 64;
+const double _kGridMaxCrossAxisExtent = 200;
+const double _kGridSpacing = AppSpacing.stackMd;
+const double _kGridChildAspectRatio = 0.78;
+
+/// Replicates `SliverGridDelegateWithMaxCrossAxisExtent`'s own column-count
+/// and row-height math (see its `getLayout`) so the fast-scroller can jump
+/// to the right row without the delegate exposing that layout itself.
+({int crossAxisCount, double rowStep}) _gridRowMetrics(double availableWidth) {
+  final crossAxisCount =
+      math.max(1, (availableWidth / (_kGridMaxCrossAxisExtent + _kGridSpacing)).ceil());
+  final usableWidth = math.max(0.0, availableWidth - _kGridSpacing * (crossAxisCount - 1));
+  final childCrossAxisExtent = usableWidth / crossAxisCount;
+  final childMainAxisExtent = childCrossAxisExtent / _kGridChildAspectRatio;
+  return (crossAxisCount: crossAxisCount, rowStep: childMainAxisExtent + _kGridSpacing);
+}
 
 enum _GalleryTab { albums, artists, singles }
 
@@ -155,7 +176,7 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
               onClose: _exitSelection,
               onAddToPlaylist: _selectedIds.isEmpty
                   ? () {}
-                  : () => _showAddToPlaylistStub(context),
+                  : () => showAddToPlaylistSheet(context, songIds: _selectedIds.toList()),
               onToggleFavorite: _selectedIds.isEmpty
                   ? () {}
                   : _markSelectedFavorite,
@@ -216,23 +237,6 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
     if (mounted) _exitSelection();
   }
 
-  void _showAddToPlaylistStub(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => const Padding(
-        padding: EdgeInsets.all(AppSpacing.containerMargin),
-        child: SizedBox(
-          height: 120,
-          child: Center(
-            child: Text(
-              'No playlists yet — playlists arrive in a later phase.',
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showShareStub(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -242,13 +246,26 @@ class _LibraryGalleryScreenState extends ConsumerState<LibraryGalleryScreen> {
   }
 }
 
-class _AlbumsGrid extends ConsumerWidget {
+class _AlbumsGrid extends ConsumerStatefulWidget {
   const _AlbumsGrid({required this.onOpen});
 
   final void Function(Album) onOpen;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AlbumsGrid> createState() => _AlbumsGridState();
+}
+
+class _AlbumsGridState extends ConsumerState<_AlbumsGrid> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final albumsAsync = ref.watch(allAlbumsProvider);
     return albumsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -261,71 +278,107 @@ class _AlbumsGrid extends ConsumerWidget {
             message: 'Scan your library from Settings to see albums here.',
           );
         }
-        return RefreshIndicator(
-          onRefresh: () =>
-              ref.read(libraryScanControllerProvider.notifier).startScan(),
-          child: GridView.builder(
-            padding: const EdgeInsets.all(AppSpacing.containerMargin),
-            // Windows Phase 3 completion pass: a hardcoded crossAxisCount: 2
-            // made sense for a phone's narrow portrait width but left each
-            // cover filling half the viewport on a wide desktop window.
-            // MaxCrossAxisExtent instead bounds item *width* and lets the
-            // grid compute however many columns actually fit — dense on
-            // desktop, still 2-ish columns on a phone, no platform check
-            // needed since it's driven by available width either way.
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 200,
-              mainAxisSpacing: AppSpacing.stackMd,
-              crossAxisSpacing: AppSpacing.stackMd,
-              childAspectRatio: 0.78,
-            ),
-            itemCount: albums.length,
-            itemBuilder: (context, i) {
-              final album = albums[i];
-              return GestureDetector(
-                onTap: () => onOpen(album),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: CoverArt(
-                        path: album.coverArtPath,
-                        borderRadius: AppRadius.borderRadiusMd,
-                        size: double.infinity,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.stackSm),
-                    Text(
-                      album.displayName,
-                      style: Theme.of(context).textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (album.artist != null)
-                      Text(
-                        album.artist!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
+        final letterIndex = indexByLetter(albums, (a) => a.displayName);
+        return Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: () =>
+                  ref.read(libraryScanControllerProvider.notifier).startScan(),
+              child: GridView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(AppSpacing.containerMargin),
+                // Windows Phase 3 completion pass: a hardcoded crossAxisCount: 2
+                // made sense for a phone's narrow portrait width but left each
+                // cover filling half the viewport on a wide desktop window.
+                // MaxCrossAxisExtent instead bounds item *width* and lets the
+                // grid compute however many columns actually fit — dense on
+                // desktop, still 2-ish columns on a phone, no platform check
+                // needed since it's driven by available width either way.
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: _kGridMaxCrossAxisExtent,
+                  mainAxisSpacing: _kGridSpacing,
+                  crossAxisSpacing: _kGridSpacing,
+                  childAspectRatio: _kGridChildAspectRatio,
                 ),
-              );
-            },
-          ),
+                itemCount: albums.length,
+                itemBuilder: (context, i) {
+                  final album = albums[i];
+                  return GestureDetector(
+                    onTap: () => widget.onOpen(album),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: CoverArt(
+                            path: album.coverArtPath,
+                            borderRadius: AppRadius.borderRadiusMd,
+                            size: double.infinity,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.stackSm),
+                        Text(
+                          album.displayName,
+                          style: Theme.of(context).textTheme.titleSmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (album.artist != null)
+                          Text(
+                            album.artist!,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            AlphabetFastScroller(
+              scrollController: _scrollController,
+              availableLetters: letterIndex.letters,
+              onLetterSelected: (letter) {
+                final i = letterIndex.firstIndexByLetter[letter];
+                if (i == null) return;
+                final metrics = _gridRowMetrics(
+                  MediaQuery.of(context).size.width - AppSpacing.containerMargin * 2,
+                );
+                final row = i ~/ metrics.crossAxisCount;
+                _scrollController.animateTo(
+                  AppSpacing.containerMargin + row * metrics.rowStep,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                );
+              },
+            ),
+          ],
         );
       },
     );
   }
 }
 
-class _ArtistsGrid extends ConsumerWidget {
+class _ArtistsGrid extends ConsumerStatefulWidget {
   const _ArtistsGrid({required this.onOpen});
 
   final void Function(Artist) onOpen;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ArtistsGrid> createState() => _ArtistsGridState();
+}
+
+class _ArtistsGridState extends ConsumerState<_ArtistsGrid> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final artistsAsync = ref.watch(allArtistsProvider);
     return artistsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -338,50 +391,73 @@ class _ArtistsGrid extends ConsumerWidget {
             message: 'Scan your library from Settings to see artists here.',
           );
         }
-        return RefreshIndicator(
-          onRefresh: () =>
-              ref.read(libraryScanControllerProvider.notifier).startScan(),
-          child: GridView.builder(
-            padding: const EdgeInsets.all(AppSpacing.containerMargin),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 200,
-              mainAxisSpacing: AppSpacing.stackMd,
-              crossAxisSpacing: AppSpacing.stackMd,
-              childAspectRatio: 0.78,
-            ),
-            itemCount: artists.length,
-            itemBuilder: (context, i) {
-              final artist = artists[i];
-              return GestureDetector(
-                onTap: () => onOpen(artist),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: CoverArt(
-                        path: null,
-                        size: double.infinity,
-                        isCircle: true,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.stackSm),
-                    Text(
-                      artist.displayName,
-                      style: Theme.of(context).textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+        final letterIndex = indexByLetter(artists, (a) => a.displayName);
+        return Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: () =>
+                  ref.read(libraryScanControllerProvider.notifier).startScan(),
+              child: GridView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(AppSpacing.containerMargin),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: _kGridMaxCrossAxisExtent,
+                  mainAxisSpacing: _kGridSpacing,
+                  crossAxisSpacing: _kGridSpacing,
+                  childAspectRatio: _kGridChildAspectRatio,
                 ),
-              );
-            },
-          ),
+                itemCount: artists.length,
+                itemBuilder: (context, i) {
+                  final artist = artists[i];
+                  return GestureDetector(
+                    onTap: () => widget.onOpen(artist),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: CoverArt(
+                            path: null,
+                            size: double.infinity,
+                            isCircle: true,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.stackSm),
+                        Text(
+                          artist.displayName,
+                          style: Theme.of(context).textTheme.titleSmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            AlphabetFastScroller(
+              scrollController: _scrollController,
+              availableLetters: letterIndex.letters,
+              onLetterSelected: (letter) {
+                final i = letterIndex.firstIndexByLetter[letter];
+                if (i == null) return;
+                final metrics = _gridRowMetrics(
+                  MediaQuery.of(context).size.width - AppSpacing.containerMargin * 2,
+                );
+                final row = i ~/ metrics.crossAxisCount;
+                _scrollController.animateTo(
+                  AppSpacing.containerMargin + row * metrics.rowStep,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                );
+              },
+            ),
+          ],
         );
       },
     );
   }
 }
 
-class _SinglesList extends ConsumerWidget {
+class _SinglesList extends ConsumerStatefulWidget {
   const _SinglesList({
     required this.sort,
     required this.selectionMode,
@@ -397,7 +473,20 @@ class _SinglesList extends ConsumerWidget {
   final void Function(int) onEnterSelection;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SinglesList> createState() => _SinglesListState();
+}
+
+class _SinglesListState extends ConsumerState<_SinglesList> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final songsAsync = ref.watch(singlesProvider);
     return songsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -410,41 +499,61 @@ class _SinglesList extends ConsumerWidget {
             message: 'Scan your library from Settings to see standalone tracks here.',
           );
         }
-        final sorted = _sortSongs(songs, sort);
-        return RefreshIndicator(
-          onRefresh: () =>
-              ref.read(libraryScanControllerProvider.notifier).startScan(),
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
-            itemCount: sorted.length,
-            itemBuilder: (context, i) {
-              final song = sorted[i];
-              return SongListTile(
-                song: song,
-                selectionMode: selectionMode,
-                isSelected: song.id != null && selectedIds.contains(song.id),
-                onLongPress: song.id == null
-                    ? null
-                    : () => onEnterSelection(song.id!),
-                onMore: selectionMode
-                    ? null
-                    : () => showSongContextMenu(
-                        context,
-                        song,
-                        queueContext: sorted,
-                      ),
-                onTap: () {
-                  if (selectionMode) {
-                    if (song.id != null) onToggleSelection(song.id!);
-                  } else {
-                    ref
-                        .read(playbackServiceProvider)
-                        .playFromSong(song, sorted);
-                  }
+        final sorted = _sortSongs(songs, widget.sort);
+        final letterIndex = indexByLetter(sorted, (s) => s.displayTitle);
+        return Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: () =>
+                  ref.read(libraryScanControllerProvider.notifier).startScan(),
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
+                itemExtent: _kSinglesRowHeight,
+                itemCount: sorted.length,
+                itemBuilder: (context, i) {
+                  final song = sorted[i];
+                  return SongListTile(
+                    song: song,
+                    selectionMode: widget.selectionMode,
+                    isSelected: song.id != null && widget.selectedIds.contains(song.id),
+                    onLongPress: song.id == null
+                        ? null
+                        : () => widget.onEnterSelection(song.id!),
+                    onMore: widget.selectionMode
+                        ? null
+                        : () => showSongContextMenu(
+                            context,
+                            song,
+                            queueContext: sorted,
+                          ),
+                    onTap: () {
+                      if (widget.selectionMode) {
+                        if (song.id != null) widget.onToggleSelection(song.id!);
+                      } else {
+                        ref
+                            .read(playbackServiceProvider)
+                            .playFromSong(song, sorted);
+                      }
+                    },
+                  );
                 },
-              );
-            },
-          ),
+              ),
+            ),
+            AlphabetFastScroller(
+              scrollController: _scrollController,
+              availableLetters: letterIndex.letters,
+              onLetterSelected: (letter) {
+                final i = letterIndex.firstIndexByLetter[letter];
+                if (i == null) return;
+                _scrollController.animateTo(
+                  AppSpacing.stackSm + i * _kSinglesRowHeight,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                );
+              },
+            ),
+          ],
         );
       },
     );

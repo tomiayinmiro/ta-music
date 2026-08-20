@@ -5,6 +5,7 @@ import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
+import '../../../data/providers/repository_providers.dart';
 import '../../../data/services/audio_service.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../screens/now_playing_screen.dart';
@@ -43,6 +44,8 @@ class MiniPlayer extends ConsumerWidget {
     final coverArtPath = song.albumId != null
         ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath
         : null;
+    final isFavorite =
+        song.id != null ? ref.watch(isFavoriteProvider(song.id!)).value ?? false : false;
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(NowPlayingScreen.route()),
@@ -102,6 +105,19 @@ class MiniPlayer extends ConsumerWidget {
                   // shuffle position 0, correctly with no track before it.
                   // A song is loaded here at all (see the early return
                   // above), so the button is always meaningful.
+                  if (song.id != null)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        size: 20,
+                        color: isFavorite ? theme.colorScheme.secondary : null,
+                      ),
+                      onPressed: () async {
+                        final repo = await ref.read(favoriteRepositoryProvider.future);
+                        await repo.setFavorite(song.id!, !isFavorite);
+                      },
+                    ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.skip_previous_rounded, size: 26),

@@ -14,6 +14,7 @@ import '../../../data/repositories/library_repository.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/section_header.dart';
+import '../../playlists/screens/playlists_screen.dart';
 import '../providers/shell_scaffold_key_provider.dart';
 import '../providers/shell_tab_provider.dart';
 import '../screens/recently_added_screen.dart';
@@ -30,6 +31,9 @@ import '../../settings/screens/settings_screen.dart';
 /// 2026-08-18): a proactive rationale dialog fires once per cold start when
 /// permission isn't granted and the library's empty, since this is the
 /// user's first impression of the app on Android.
+///
+/// Quick access grew a third tile (Playlists) in Phase 4 — the two-tile
+/// layout above described it as "dropped — not built until Phase 4".
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -251,6 +255,16 @@ class _HomeContent extends ConsumerWidget {
                 ),
               ),
             ),
+            const SizedBox(width: AppSpacing.stackSm),
+            Expanded(
+              child: _QuickAccessTile(
+                icon: Icons.playlist_play_rounded,
+                label: 'Playlists',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PlaylistsScreen()),
+                ),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.stackLg),
@@ -403,16 +417,26 @@ class _QuickAccessTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: AppRadius.borderRadiusMd,
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.stackMd),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.stackSm,
+          vertical: AppSpacing.stackMd,
+        ),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainer,
           borderRadius: AppRadius.borderRadiusMd,
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: theme.colorScheme.primary),
-            const SizedBox(width: AppSpacing.stackSm),
-            Expanded(child: Text(label, style: theme.textTheme.titleSmall)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
