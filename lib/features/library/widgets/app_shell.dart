@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/scan_progress_banner.dart';
-import '../../favorites/screens/favorites_screen.dart';
+import '../../aura/screens/aura_screen.dart';
 import '../../now_playing/widgets/mini_player.dart';
 import '../providers/shell_scaffold_key_provider.dart';
 import '../providers/shell_tab_provider.dart';
@@ -10,8 +10,13 @@ import '../screens/home_screen.dart';
 import '../screens/library_gallery_screen.dart';
 import 'app_nav_drawer.dart';
 
-/// Root scaffold: drawer + bottom nav (Lounge / The Gallery / Favorites)
-/// + the persistent scan-progress banner, per the Phase 2 brief.
+/// Root scaffold: drawer + bottom nav (Lounge / The Gallery / Aura) + the
+/// persistent scan-progress banner, per the Phase 2 brief.
+///
+/// The 3rd tab was Favorites through Phase 4; Phase 4.5 (approved
+/// 2026-08-21) replaced it with Aura, matching `designs/aura/local_stats/`'s
+/// own bottom nav. Favorites moved to a pushed route — see
+/// `FavoritesScreen` and the song context menu's "Go to Favorites" entry.
 class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
@@ -32,7 +37,7 @@ class AppShell extends ConsumerWidget {
                 children: const [
                   HomeScreen(),
                   LibraryGalleryScreen(),
-                  FavoritesScreen(),
+                  AuraScreen(),
                 ],
               ),
             ),
@@ -52,9 +57,9 @@ class AppShell extends ConsumerWidget {
             label: 'The Gallery',
           ),
           NavigationDestination(
-            icon: Icon(Icons.favorite_outline_rounded),
-            selectedIcon: Icon(Icons.favorite_rounded),
-            label: 'Favorites',
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome_rounded),
+            label: 'Aura',
           ),
         ],
       ),

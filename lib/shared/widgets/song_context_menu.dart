@@ -7,7 +7,7 @@ import '../../data/models/song.dart';
 import '../../data/providers/library_providers.dart';
 import '../../data/providers/playback_providers.dart';
 import '../../data/providers/repository_providers.dart';
-import '../../features/library/providers/shell_tab_provider.dart';
+import '../../features/favorites/screens/favorites_screen.dart';
 import '../../features/library/screens/album_detail_screen.dart';
 import '../../features/library/screens/artist_detail_screen.dart';
 import 'add_to_playlist_sheet.dart';
@@ -210,12 +210,16 @@ class _SongContextMenuState extends ConsumerState<_SongContextMenu> {
                 icon: Icons.favorite_outline_rounded,
                 label: 'Go to Favorites',
                 // Navigation shortcut only — distinct from the toggle above.
-                // Pops back to the root route (a no-op if already there) so
-                // switching the bottom-nav tab is guaranteed visible.
+                // Favorites is a pushed route, not a bottom-nav tab, since
+                // Phase 4.5 gave that tab to Aura — push it directly instead
+                // of switching shell tabs.
                 onTap: () {
                   Navigator.of(context).pop();
-                  ref.read(shellTabIndexProvider.notifier).set(2);
-                  Navigator.of(outer).popUntil((route) => route.isFirst);
+                  if (outer.mounted) {
+                    Navigator.of(
+                      outer,
+                    ).push(MaterialPageRoute(builder: (_) => const FavoritesScreen()));
+                  }
                 },
               ),
               _ActionTile(

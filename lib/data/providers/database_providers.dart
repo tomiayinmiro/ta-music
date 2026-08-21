@@ -3,8 +3,10 @@ import 'package:sqflite/sqflite.dart';
 
 import '../database/daos/album_dao.dart';
 import '../database/daos/artist_dao.dart';
+import '../database/daos/aura_state_dao.dart';
 import '../database/daos/excluded_folder_dao.dart';
 import '../database/daos/favorite_dao.dart';
+import '../database/daos/listening_segment_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/playlist_dao.dart';
 import '../database/daos/playback_state_dao.dart';
@@ -57,4 +59,12 @@ final settingsDaoProvider = FutureProvider<SettingsDao>((ref) async {
 
 final playbackStateDaoProvider = FutureProvider<PlaybackStateDao>((ref) async {
   return PlaybackStateDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final auraStateDaoProvider = FutureProvider<AuraStateDao>((ref) async {
+  return AuraStateDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final listeningSegmentDaoProvider = FutureProvider<ListeningSegmentDao>((ref) async {
+  return ListeningSegmentDao(await ref.watch(appDatabaseProvider.future));
 });

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'data/database/daos/album_dao.dart';
+import 'data/database/daos/listening_segment_dao.dart';
 import 'data/database/daos/play_history_dao.dart';
 import 'data/database/daos/playback_state_dao.dart';
 import 'data/database/daos/settings_dao.dart';
@@ -27,7 +28,7 @@ void main() async {
   // singleton AppDatabase/DatabaseChangeNotifier as the providers built
   // later, so writes from either side stay consistent.
   final db = await AppDatabase.instance;
-  final songRepository = SongRepository(SongDao(db), PlayHistoryDao(db));
+  final songRepository = SongRepository(SongDao(db), PlayHistoryDao(db), ListeningSegmentDao(db));
   final albumRepository = AlbumRepository(AlbumDao(db));
   final settingsRepository = SettingsRepository(SettingsDao(db));
   final playbackStateRepository = PlaybackStateRepository(PlaybackStateDao(db));

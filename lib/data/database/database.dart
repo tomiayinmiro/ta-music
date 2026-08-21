@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 4;
+const int kDatabaseVersion = 6;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -18,6 +18,8 @@ final Map<int, _Migration> _migrations = {
   2: _migrationV2,
   3: _migrationV3,
   4: _migrationV4,
+  5: _migrationV5,
+  6: _migrationV6,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -268,4 +270,60 @@ Future<void> _migrationV4(Database db) async {
       last_saved_at INTEGER
     )
   ''');
+}
+
+/// Phase 4.5 (Aura gamification): a single-row cache of total listening
+/// minutes and the level derived from them, plus the last level shown via
+/// the level-up transition (so re-opening the Aura page doesn't replay a
+/// transition the user already saw). `id` is pinned to 1 by the CHECK
+/// constraint, same convention as `playback_state`. `current_level` and
+/// `last_shown_level` are both 1-based (`AuraLevel.number`) — `0` on
+/// `last_shown_level` means "never shown" (a brand-new install).
+Future<void> _migrationV5(Database db) async {
+  await db.execute('''
+    CREATE TABLE aura_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      total_listening_mins_cached INTEGER NOT NULL DEFAULT 0,
+      current_level INTEGER NOT NULL DEFAULT 1,
+      last_shown_level INTEGER NOT NULL DEFAULT 0,
+      last_computed_at INTEGER
+    )
+  ''');
+}
+
+/// Fixes the "total minutes credits full track duration instead of actual
+/// time listened" bug: `aura_state`/the nav-drawer stats previously derived
+/// total minutes from `SUM(songs.duration_ms)` over `play_history` rows —
+/// meaning starting a 30-minute track and skipping after 2 minutes credited
+/// 30 minutes, not 2. `listening_segments` instead logs real wall-clock
+/// elapsed time, accumulated only while `AudioPlayer.playing` is actually
+/// true (see `ListeningTimeAccumulator`), flushed periodically (every 30s,
+/// for crash resilience) and on every song/pause/stop boundary.
+///
+/// Deliberately a separate table from `play_history`, not a `listened_ms`
+/// column added to it: `play_history` rows only exist for a *counted* play
+/// (the 50%-or-completion rule, Phase 3) — short skip-throughs that never
+/// cross that threshold still need their real seconds credited here, and
+/// conflating the two would risk `play_count`/`topArtists`/`topSongs`
+/// (all keyed off `play_history` counting as "a play") picking up rows that
+/// were never meant to count as one. No backfill for pre-existing listening
+/// — old `play_history` rows carry no actual-listened data to recover, so
+/// this starts empty and total minutes effectively resets. Approved
+/// 2026-08-21.
+Future<void> _migrationV6(Database db) async {
+  await db.execute('''
+    CREATE TABLE listening_segments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      song_id INTEGER NOT NULL,
+      listened_ms INTEGER NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      FOREIGN KEY (song_id) REFERENCES songs (id) ON DELETE CASCADE
+    )
+  ''');
+  await db.execute(
+    'CREATE INDEX idx_listening_segments_recorded_at ON listening_segments (recorded_at)',
+  );
+  await db.execute(
+    'CREATE INDEX idx_listening_segments_song_id ON listening_segments (song_id)',
+  );
 }

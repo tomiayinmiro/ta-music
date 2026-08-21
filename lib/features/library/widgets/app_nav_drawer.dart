@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../core/utils/duration_format.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../favorites/screens/favorites_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../providers/shell_tab_provider.dart';
 
@@ -15,6 +16,10 @@ import '../providers/shell_tab_provider.dart';
 /// (no accounts in this app — approved 2026-08-17), and the item list is
 /// scoped to what Phase 2 actually built: Lounge, The Gallery, Local
 /// Stats, Settings.
+///
+/// Gained a "Favorites" entry in Phase 4.5 (approved 2026-08-21): Favorites
+/// lost its bottom-nav tab to Aura that phase, so without this entry it was
+/// reachable only through a song's context menu.
 class AppNavDrawer extends ConsumerStatefulWidget {
   const AppNavDrawer({super.key});
 
@@ -70,6 +75,16 @@ class _AppNavDrawerState extends ConsumerState<AppNavDrawer> {
               label: 'The Gallery',
               selected: selectedIndex == 1,
               onTap: () => _selectTab(1),
+            ),
+            _NavItem(
+              icon: Icons.favorite_outline_rounded,
+              label: 'Favorites',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const FavoritesScreen()));
+              },
             ),
             _NavItem(
               icon: Icons.bar_chart_rounded,

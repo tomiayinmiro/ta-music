@@ -8,6 +8,7 @@ import '../repositories/playback_state_repository.dart';
 import '../repositories/playlist_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/song_repository.dart';
+import '../services/aura_service.dart';
 import '../services/stats_service.dart';
 import 'database_providers.dart';
 
@@ -18,6 +19,7 @@ final songRepositoryProvider = FutureProvider<SongRepository>((ref) async {
   return SongRepository(
     await ref.watch(songDaoProvider.future),
     await ref.watch(playHistoryDaoProvider.future),
+    await ref.watch(listeningSegmentDaoProvider.future),
   );
 });
 
@@ -49,6 +51,7 @@ final statsServiceProvider = FutureProvider<StatsService>((ref) async {
   return StatsService(
     playHistoryDao: await ref.watch(playHistoryDaoProvider.future),
     songDao: await ref.watch(songDaoProvider.future),
+    listeningSegmentDao: await ref.watch(listeningSegmentDaoProvider.future),
   );
 });
 
@@ -58,4 +61,13 @@ final settingsRepositoryProvider = FutureProvider<SettingsRepository>((ref) asyn
 
 final playbackStateRepositoryProvider = FutureProvider<PlaybackStateRepository>((ref) async {
   return PlaybackStateRepository(await ref.watch(playbackStateDaoProvider.future));
+});
+
+final auraServiceProvider = FutureProvider<AuraService>((ref) async {
+  return AuraService(
+    auraStateDao: await ref.watch(auraStateDaoProvider.future),
+    playHistoryDao: await ref.watch(playHistoryDaoProvider.future),
+    songDao: await ref.watch(songDaoProvider.future),
+    listeningSegmentDao: await ref.watch(listeningSegmentDaoProvider.future),
+  );
 });

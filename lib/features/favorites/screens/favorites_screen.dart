@@ -9,20 +9,25 @@ import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/alphabet_fast_scroller.dart';
+import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/song_context_menu.dart';
-import '../../library/providers/shell_scaffold_key_provider.dart';
 
 const double _kRowHeight = 68;
 const double _kHeaderEstimate = 210;
 
-/// The bottom nav's 3rd tab. Sorted by play count (most-played first) —
-/// songs with 0 plays are excluded even when manually favorited, per
-/// CLAUDE.md ("songs with 0 plays are excluded") — confirmed 2026-08-20:
-/// the 0-play exclusion wins over a manual add. No dedicated Stitch design
-/// (DESIGN_MAP: "not in Stitch folders — ask before building"), built from
-/// sonic_sanctuary_2 tokens matching the other unmapped Phase 4 screens.
+/// A pushed route (nav drawer + the song context menu's "Go to Favorites").
+/// Was the bottom nav's 3rd tab through Phase 4; Phase 4.5 (approved
+/// 2026-08-21) replaced that tab with Aura, so this moved off the shell's
+/// `IndexedStack` onto the root `Navigator` — hence `AppScaffold` (keeps the
+/// mini player visible) instead of the bare `Scaffold` it used to need as a
+/// tab body. Sorted by play count (most-played first) — songs with 0 plays
+/// are excluded even when manually favorited, per CLAUDE.md ("songs with 0
+/// plays are excluded") — confirmed 2026-08-20: the 0-play exclusion wins
+/// over a manual add. No dedicated Stitch design (DESIGN_MAP: "not in
+/// Stitch folders — ask before building"), built from sonic_sanctuary_2
+/// tokens matching the other unmapped Phase 4 screens.
 class FavoritesScreen extends ConsumerStatefulWidget {
   const FavoritesScreen({super.key});
 
@@ -43,14 +48,8 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   Widget build(BuildContext context) {
     final favoritesAsync = ref.watch(favoriteSongsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu_rounded),
-          onPressed: () => ref.read(shellScaffoldKeyProvider).currentState?.openDrawer(),
-        ),
-        title: const Text('Favorites'),
-      ),
+    return AppScaffold(
+      appBar: AppBar(title: const Text('Favorites')),
       body: favoritesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Something went wrong: $e')),

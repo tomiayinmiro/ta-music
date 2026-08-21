@@ -33,7 +33,10 @@ import '../../settings/screens/settings_screen.dart';
 /// user's first impression of the app on Android.
 ///
 /// Quick access grew a third tile (Playlists) in Phase 4 — the two-tile
-/// layout above described it as "dropped — not built until Phase 4".
+/// layout above described it as "dropped — not built until Phase 4". Phase
+/// 4.5 (approved 2026-08-21) swapped the Favorites tile for Aura — Favorites
+/// is still reachable via the song context menu's "Go to Favorites" entry
+/// and the nav drawer, just no longer from Home or the bottom nav.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -240,8 +243,8 @@ class _HomeContent extends ConsumerWidget {
           children: [
             Expanded(
               child: _QuickAccessTile(
-                icon: Icons.favorite_rounded,
-                label: 'Favorites',
+                icon: Icons.auto_awesome_rounded,
+                label: 'Aura',
                 onTap: () => ref.read(shellTabIndexProvider.notifier).set(2),
               ),
             ),

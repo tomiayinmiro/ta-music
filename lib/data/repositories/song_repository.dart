@@ -1,3 +1,4 @@
+import '../database/daos/listening_segment_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/song_dao.dart';
 import '../models/play_history_entry.dart';
@@ -5,10 +6,11 @@ import '../models/song.dart';
 import 'reactive_query.dart';
 
 class SongRepository {
-  SongRepository(this._songDao, this._playHistoryDao);
+  SongRepository(this._songDao, this._playHistoryDao, this._listeningSegmentDao);
 
   final SongDao _songDao;
   final PlayHistoryDao _playHistoryDao;
+  final ListeningSegmentDao _listeningSegmentDao;
 
   Stream<List<Song>> watchAllVisible() => watchQuery({'songs'}, _songDao.getAllVisible);
 
@@ -50,4 +52,16 @@ class SongRepository {
   }
 
   Future<void> markPlayCompleted(int playHistoryId) => _playHistoryDao.markCompleted(playHistoryId);
+
+  /// Records real, wall-clock-measured listening time — decoupled from
+  /// [recordPlay]/`play_count` entirely, see `_migrationV6`'s doc. Called
+  /// by `AudioPlayerHandler`'s `ListeningTimeAccumulator` flushes, never
+  /// with a track's full duration.
+  Future<void> recordListenedTime(int songId, int listenedMs, {DateTime? at}) {
+    return _listeningSegmentDao.insert(
+      songId: songId,
+      listenedMs: listenedMs,
+      recordedAt: at ?? DateTime.now(),
+    );
+  }
 }

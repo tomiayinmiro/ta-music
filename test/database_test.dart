@@ -17,6 +17,8 @@ const _expectedTables = {
   'scan_roots',
   'settings',
   'playback_state',
+  'aura_state',
+  'listening_segments',
 };
 
 void main() {

@@ -24,3 +24,11 @@ String formatListeningHours(Duration d) {
   final hours = d.inMinutes / 60;
   return '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} hrs';
 }
+
+/// Formats a minute count compactly for the Aura Stats card, e.g. "845" or
+/// "14.2k" once it crosses 1,000 — matches the mockup's "14.2k" total-mins
+/// display without pulling in the `intl` package for one format.
+String formatMinutesCompact(int minutes) {
+  if (minutes < 1000) return '$minutes';
+  return '${(minutes / 1000).toStringAsFixed(1)}k';
+}

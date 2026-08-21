@@ -15,6 +15,7 @@ import '../../repositories/album_repository.dart';
 import '../../repositories/playback_state_repository.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/song_repository.dart';
+import 'listening_time_accumulator.dart';
 import 'next_aware_shuffle_order.dart';
 import 'playback_handler.dart';
 import 'playback_models.dart';
@@ -119,6 +120,19 @@ class AudioPlayerHandler extends BaseAudioHandler
   bool _resumeAfterInterruption = false;
   bool _pausedByInterruption = false;
 
+  // Real, wall-clock-measured listening time (Aura's total minutes /
+  // nav-drawer "Hours listened") — deliberately independent of the
+  // play-count tracking above, see `listening_time_accumulator.dart` and
+  // `_migrationV6`'s doc for why a track's full duration must never be
+  // credited for a partial listen. `_wasPlaying` detects the play/pause
+  // boundary from `playerStateStream` (see `_onPlayerStateChangedForListening`);
+  // `_onIndexChanged` separately closes/reopens the window at song
+  // boundaries so a skip doesn't misattribute one song's time to another.
+  final _listenAccumulator = ListeningTimeAccumulator();
+  bool _wasPlaying = false;
+  Timer? _listenFlushTimer;
+  static const _listenFlushInterval = Duration(seconds: 30);
+
   // Debounces position saves from seeking — bug 3 (device testing pass)
   // asks for this specifically rather than a continuous periodic save, to
   // avoid writing to disk on every position tick.
@@ -153,6 +167,16 @@ class AudioPlayerHandler extends BaseAudioHandler
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) _finalizeItemTracking();
     });
+    _player.playerStateStream.listen(_onPlayerStateChangedForListening);
+    _listenFlushTimer = Timer.periodic(
+      _listenFlushInterval,
+      // Crash resilience: whatever's accumulated since the last flush is
+      // durably persisted every 30s rather than only on pause/stop/skip —
+      // a force-kill mid-playback loses at most this interval's worth of
+      // credited time. `keepOpen` re-opens the window immediately so
+      // tracking continues seamlessly rather than losing the open window.
+      (_) => unawaited(_flushListeningWindow(keepOpen: true)),
+    );
 
     _settingsRepository.watchResumeAfterInterruption().listen(
       (value) => _resumeAfterInterruption = value,
@@ -193,14 +217,16 @@ class AudioPlayerHandler extends BaseAudioHandler
   // --- Status/repeat mapping -----------------------------------------
 
   PlaybackStatus _toStatus(PlayerState state) {
-    if (state.processingState == ProcessingState.idle)
+    if (state.processingState == ProcessingState.idle) {
       return PlaybackStatus.stopped;
+    }
     if (state.processingState == ProcessingState.loading ||
         state.processingState == ProcessingState.buffering) {
       return PlaybackStatus.buffering;
     }
-    if (state.processingState == ProcessingState.completed)
+    if (state.processingState == ProcessingState.completed) {
       return PlaybackStatus.stopped;
+    }
     return state.playing ? PlaybackStatus.playing : PlaybackStatus.paused;
   }
 
@@ -262,6 +288,52 @@ class AudioPlayerHandler extends BaseAudioHandler
       mediaItem.add(null);
     }
     unawaited(_savePlaybackState());
+
+    // Close out the outgoing song's listening window before crediting the
+    // incoming one — without this, a skip mid-song would misattribute
+    // whatever time had accumulated to the wrong song at the next flush.
+    unawaited(_flushListeningWindow());
+    final newSongId = (index != null && index >= 0 && index < queueSongs.length)
+        ? queueSongs[index].id
+        : null;
+    if (_player.playing && newSongId != null) {
+      _listenAccumulator.start(newSongId, DateTime.now());
+    }
+  }
+
+  // --- Actual-listened-time tracking (Aura total minutes / nav-drawer
+  // "Hours listened") — see the `_listenAccumulator` field doc. -----------
+
+  /// Opens/closes the listening window on the `playing` boundary —
+  /// `state.playing` alone isn't quite right at natural queue-end, where
+  /// just_audio can report `playing: true` with `processingState:
+  /// completed` for a moment before actually stopping.
+  void _onPlayerStateChangedForListening(PlayerState state) {
+    final isPlaying = state.playing && state.processingState != ProcessingState.completed;
+    if (isPlaying && !_wasPlaying) {
+      final songId = _currentTrackedSongId;
+      if (songId != null) _listenAccumulator.start(songId, DateTime.now());
+    } else if (!isPlaying && _wasPlaying) {
+      unawaited(_flushListeningWindow());
+    }
+    _wasPlaying = isPlaying;
+  }
+
+  int? get _currentTrackedSongId {
+    final index = _player.currentIndex;
+    if (index == null || index < 0 || index >= queueSongs.length) return null;
+    return queueSongs[index].id;
+  }
+
+  /// Flushes whatever's accumulated in the open listening window to
+  /// `listening_segments` — a no-op if nothing is currently accumulating
+  /// (paused, stopped, or between songs). [keepOpen] re-opens a fresh
+  /// window for the same song immediately instead of closing outright; see
+  /// the periodic timer in [_init].
+  Future<void> _flushListeningWindow({bool keepOpen = false}) async {
+    final segment = _listenAccumulator.flush(DateTime.now(), keepOpen: keepOpen);
+    if (segment == null) return;
+    await _songRepository.recordListenedTime(segment.songId, segment.elapsedMs);
   }
 
   MediaItem _mediaItemFor(Song song) {
@@ -293,8 +365,9 @@ class AudioPlayerHandler extends BaseAudioHandler
       _coverArtCache.clear();
     }
     for (final song in songs) {
-      if (song.albumId == null || _coverArtCache.containsKey(song.albumId))
+      if (song.albumId == null || _coverArtCache.containsKey(song.albumId)) {
         continue;
+      }
       final album = await _albumRepository.getById(song.albumId!);
       _coverArtCache[song.albumId] = album?.coverArtPath;
     }
@@ -506,6 +579,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> dispose() async {
     _seekSaveDebounce?.cancel();
     _instrumentationTimer?.cancel();
+    _listenFlushTimer?.cancel();
     _lifecycleListener?.dispose();
     await _player.dispose();
   }

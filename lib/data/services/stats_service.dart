@@ -1,3 +1,4 @@
+import '../database/daos/listening_segment_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/song_dao.dart';
 import '../models/song.dart';
@@ -40,18 +41,31 @@ class ListeningStats {
 /// nav drawer per CLAUDE.md. Never associates data with any account —
 /// there isn't one.
 class StatsService {
-  StatsService({required this._playHistoryDao, required this._songDao});
+  StatsService({
+    required this._playHistoryDao,
+    required this._songDao,
+    required this._listeningSegmentDao,
+  });
 
   final PlayHistoryDao _playHistoryDao;
   final SongDao _songDao;
+  final ListeningSegmentDao _listeningSegmentDao;
 
-  Stream<ListeningStats> watch() => watchQuery({'play_history', 'songs'}, compute);
+  Stream<ListeningStats> watch() =>
+      watchQuery({'play_history', 'songs', 'listening_segments'}, compute);
 
+  /// "Hours listened" is sourced from `listening_segments` (real,
+  /// wall-clock-measured time) rather than `play_history`'s full track
+  /// durations — same underlying fix as the Aura page's total minutes, see
+  /// `_migrationV6`'s doc. `totalPlays == 0` is no longer sufficient on its
+  /// own to short-circuit to empty: a listen that never crosses the
+  /// 50%-play-count threshold (a quick skip-through) still has real
+  /// listened time credited here even with zero counted plays.
   Future<ListeningStats> compute() async {
     final totalPlays = await _playHistoryDao.totalPlayCount();
-    if (totalPlays == 0) return ListeningStats.empty;
+    final totalMs = await _listeningSegmentDao.totalListenedMs();
+    if (totalPlays == 0 && totalMs == 0) return ListeningStats.empty;
 
-    final totalMs = await _playHistoryDao.totalListenedMs();
     final topArtistPairs = await _playHistoryDao.topArtists(limit: 5);
     final topSongPairs = await _playHistoryDao.topSongIds(limit: 5);
     final weekAgo = DateTime.now().subtract(const Duration(days: 7));

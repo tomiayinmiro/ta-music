@@ -29,13 +29,17 @@ class PlayHistoryDao {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// Total listening time in milliseconds, computed by joining each
-  /// history row back to its song's duration.
-  Future<int> totalListenedMs() async {
-    final result = await _db.rawQuery('''
-      SELECT COALESCE(SUM(s.duration_ms), 0) AS total FROM play_history ph
-      JOIN songs s ON s.id = ph.song_id
-    ''');
+  /// Distinct songs played — deliberately `COUNT(DISTINCT song_id)`, not
+  /// [totalPlayCount]'s `COUNT(*)`: playing one song ten times (repeat, or
+  /// skipping back to it) must read as "1 song played," not "10". Only
+  /// used for the Aura Stats card's "Songs Played" tile — the nav-drawer
+  /// stats' "Songs played" tile intentionally keeps using [totalPlayCount]
+  /// (out of scope for the 2026-08-21 Aura fix; not touched here).
+  Future<int> distinctSongsPlayed({DateTime? since}) async {
+    final where = since != null ? 'WHERE played_at >= ${since.millisecondsSinceEpoch}' : '';
+    final result = await _db.rawQuery(
+      'SELECT COUNT(DISTINCT song_id) AS c FROM play_history $where',
+    );
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
