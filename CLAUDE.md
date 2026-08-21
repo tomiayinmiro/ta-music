@@ -24,13 +24,14 @@ Core capabilities:
 - Shuffle, repeat (off/one/all), play-next, add-to-queue with gesture support
 - Standard settings: theme, folders to scan, folders to exclude, cache size, about screen
 - Listening stats surfaced in the navigation drawer (top artists, hours listened, songs played — LOCAL ONLY, no accounts)
+- Aura: a local listening-minutes leveling system (8 tiers, own stats page, level-up transition) — LOCAL ONLY, no accounts, no social sharing (Phase 4.5, see roadmap)
 
 ## Explicit non-goals for v1 and v1.5
 - No user accounts or authentication anywhere
 - No backend server, no cloud storage, no cloud sync of anything except device-to-device local sync
 - No streaming services — playback is always local. Do NOT integrate any online music sources (no yt-dlp, no Spotify, no YouTube, no SoundCloud). The app is intended for public release, so anything with legal/licensing exposure is off the table.
 - No social features (no activity feeds, no shared playlists, no listener presence, no sharing to external social networks from within the app)
-- No gamification (no XP, no levels, no ranks, no achievements/badges, no "Aura" system). The `designs/aura_*` and `designs/*_milestone_*` folders contain designs for a gamification system that we are NOT building. Ignore them, or use their transition animations ONLY as generic tasteful screen transitions if I explicitly ask.
+- No achievement badges, ranks/leaderboards, or social sharing of progress. **Exception (reopened 2026-08-21): the Aura local-stats leveling system is in scope for Phase 4.5** — a listening-minutes-based level track (8 tiers) with its own stats page and level-up transition, sourced ONLY from `designs/aura/`. The old `designs/aura_*` folders (`aura_profile_stats`, `interactive_aura_profile`, `aura_levels_stats`, `refined_aura_progression_tiered_view`, `aura_achievements_gallery`, `aura_level_up_transition`, `universe_aura_reveal`, `supernova_milestone_reached`, `aura_discovery_feed`) are DISCARDED — do not reference them, see `DESIGN_MAP.md`.
 - Do NOT include voice recordings/memos from my phone. Detect and exclude by:
   (a) folder location (skip Android's `Recordings/`, `Voice Recorder/`, `Call Recordings/`, and any subfolder containing "recording" in the name)
   (b) file duration under 60 seconds AND no artist tag AND no album tag (heuristic for voice memos)
@@ -161,13 +162,15 @@ test/
 - **The add-to-playlist bottom sheet (`shared/widgets/add_to_playlist_sheet.dart`) is shared between the song context menu (single song, full add/remove toggle diffed against current membership) and the library gallery's bulk-select bar (multiple songs, add-only — there's no single well-defined "already in" state to diff against a mixed selection).** Wired up the gallery's previously-stubbed "Add to Playlist" bulk action to it at the same time, since it was the same underlying gap.
 - **Home's quick-access row grew a third tile (Playlists)** and switched from an icon-beside-label `Row` layout to icon-above-label `Column` per tile — three equal-width columns made the existing `Row` layout (no `maxLines`/`overflow` on the label) prone to wrapping "Recently Added" as the tightest label. All three tiles' visuals changed together for consistency, not just the new one.
 - **No automated tests added for the new playlist DAO/repository logic or screens** — the existing suite (regression tests, `database_test.dart`, `relative_queue_index_test.dart`) still passes untouched, but reorder/add/remove-membership logic and the new screens are so far only verified by `flutter analyze` (clean) and that existing suite — not yet exercised on a real device. Worth adding guard tests if this area sees more churn.
+- **Aura gamification reopened for Phase 4.5** (approved 2026-08-21) — previously a v2-deferred non-goal (see original "Explicit non-goals" wording, now updated above); now scoped narrowly to the local listening-minutes leveling system (main stats page + 8 level tiers + level-up transition) sourced from `designs/aura/`. Achievements/badges, ranks/leaderboards, and social sharing remain out of scope — this is a stats/leveling feature only. See `DESIGN_MAP.md`'s "Aura gamification (Phase 4.5)" table for the screen list and the discarded `aura_*` folders it supersedes.
 
 ## Feature roadmap
 - **v1 (build now, phases 1–7):** the shipping product. Complete offline music player with everything listed in "Core capabilities" above.
   - Phase 1 (foundation), Phase 2 (library scanner/browsing), and Phase 3 (playback engine + background service) are **complete** as of 2026-08-19, verified on both Android (Tecno BF6) and Windows.
   - **Phase 4 (Playlists) is built, not yet device-tested** as of 2026-08-20 — Favorites (upgraded from its Phase 2 stub), Recently Added (extended), Playlists list, Playlist detail, the playlist creation flow, and the add-to-playlist bottom sheet are all in place per `DESIGN_MAP.md`, plus the reusable `AlphabetFastScroller` and the context menu's "Go to Favorites" entry from the same pass. Mark complete once verified on Android + Windows, matching how Phases 1–3 closed out.
+- **Phase 4.5 (Aura gamification, reopened 2026-08-21, build after Phase 4):** local listening-minutes leveling system — main Aura stats page (profile, level card, stats card, local insights), 8 level tiers (Atmosphere through Supernova), and a level-up transition animation. Sourced entirely from `designs/aura/`; the old `aura_*` folders are discarded (see `DESIGN_MAP.md`). Local only — no accounts, no social sharing, no achievements/badges.
 - **v1.5 (build after v1 is stable in daily use, phases 8–9):** player skins (alternate now-playing variants, background shader gallery), mood-reactive player bar, visualizers gallery, hi-res audio export, haptic controls.
-- **v2 (deferred, may never build):** Aura gamification, social hub, backend + accounts. Do not touch v2 features unless I explicitly reopen that decision.
+- **v2 (deferred, may never build):** social hub, backend + accounts. Do not touch v2 features unless I explicitly reopen that decision.
 
 ## How I want you to work with me
 - Before any non-trivial change, tell me your plan in a few bullets and wait for me to confirm
