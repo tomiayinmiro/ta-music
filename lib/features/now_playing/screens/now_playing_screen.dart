@@ -14,12 +14,14 @@ import '../../../data/services/audio_service.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/glass_container.dart';
 import '../../../shared/widgets/song_context_menu.dart';
+import '../widgets/lyrics_panel.dart';
 import 'queue_screen.dart';
 
 /// Full-screen "Now Playing" — matches `designs/now_playing/`: large cover,
 /// title/artist/favorite, scrubable progress, shuffle/prev/play/next/repeat,
-/// a queue button, a more-menu, and a lyrics placeholder (real lyrics land
-/// in Phase 5).
+/// a queue button, a more-menu, and a LYRICS toggle that swaps the cover art
+/// for a synced [LyricsPanel] in place (see that widget's doc for why an
+/// in-place swap rather than a pushed screen).
 class NowPlayingScreen extends ConsumerStatefulWidget {
   const NowPlayingScreen({super.key});
 
@@ -50,6 +52,7 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   double _dragOffset = 0;
   double? _scrubValue;
+  bool _showLyrics = false;
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +66,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       // Playback stopped/cleared while this screen was open (e.g. queue
       // ran out) — nothing left to show, so back out.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && Navigator.of(context).canPop())
+        if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
+        }
       });
       return const Scaffold(body: SizedBox.shrink());
     }
@@ -167,14 +171,16 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                       child: Column(
                         children: [
                           const SizedBox(height: AppSpacing.stackMd),
-                          Hero(
-                            tag: 'now_playing_cover',
-                            child: CoverArt(
-                              path: coverArtPath,
-                              size: coverSize,
-                              borderRadius: AppRadius.borderRadiusXl,
-                            ),
-                          ),
+                          _showLyrics
+                              ? LyricsPanel(song: song, height: coverSize)
+                              : Hero(
+                                  tag: 'now_playing_cover',
+                                  child: CoverArt(
+                                    path: coverArtPath,
+                                    size: coverSize,
+                                    borderRadius: AppRadius.borderRadiusXl,
+                                  ),
+                                ),
                           const SizedBox(height: AppSpacing.stackLg),
                           Row(
                             children: [
@@ -371,23 +377,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                   ),
                                 ),
                               const SizedBox(width: AppSpacing.stackMd),
-                              // Bug 9 (device testing pass): real lyrics are
-                              // Phase 5 scope. Visibly disabled (muted color,
-                              // no toggle behavior) rather than hidden, so
-                              // it's clear this is intentionally inactive —
-                              // tapping explains why instead of doing nothing.
                               TextButton.icon(
-                                onPressed: () => ScaffoldMessenger.of(context)
-                                    .showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Lyrics are coming in a later phase.',
-                                        ),
-                                      ),
-                                    ),
+                                onPressed: () =>
+                                    setState(() => _showLyrics = !_showLyrics),
                                 style: TextButton.styleFrom(
-                                  foregroundColor: theme.colorScheme.onSurface
-                                      .withValues(alpha: 0.38),
+                                  foregroundColor: _showLyrics
+                                      ? theme.colorScheme.secondary
+                                      : null,
                                 ),
                                 icon: const Icon(
                                   Icons.lyrics_outlined,

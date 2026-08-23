@@ -7,6 +7,7 @@ import '../database/daos/aura_state_dao.dart';
 import '../database/daos/excluded_folder_dao.dart';
 import '../database/daos/favorite_dao.dart';
 import '../database/daos/listening_segment_dao.dart';
+import '../database/daos/lyrics_cache_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/playlist_dao.dart';
 import '../database/daos/playback_state_dao.dart';
@@ -67,4 +68,8 @@ final auraStateDaoProvider = FutureProvider<AuraStateDao>((ref) async {
 
 final listeningSegmentDaoProvider = FutureProvider<ListeningSegmentDao>((ref) async {
   return ListeningSegmentDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final lyricsCacheDaoProvider = FutureProvider<LyricsCacheDao>((ref) async {
+  return LyricsCacheDao(await ref.watch(appDatabaseProvider.future));
 });

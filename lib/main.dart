@@ -1,10 +1,12 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'data/database/daos/album_dao.dart';
 import 'data/database/daos/listening_segment_dao.dart';
+import 'data/database/daos/lyrics_cache_dao.dart';
 import 'data/database/daos/play_history_dao.dart';
 import 'data/database/daos/playback_state_dao.dart';
 import 'data/database/daos/settings_dao.dart';
@@ -12,10 +14,14 @@ import 'data/database/daos/song_dao.dart';
 import 'data/database/database.dart';
 import 'data/providers/playback_providers.dart';
 import 'data/repositories/album_repository.dart';
+import 'data/repositories/lyrics_repository.dart';
 import 'data/repositories/playback_state_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/repositories/song_repository.dart';
 import 'data/services/audio_service.dart';
+import 'data/services/lyrics/lrclib_client.dart';
+import 'data/services/lyrics/local_lrc_file_reader.dart';
+import 'data/services/lyrics/lyrics_prefetch_service.dart';
 import 'data/services/playback/audio_player_handler.dart';
 
 void main() async {
@@ -32,6 +38,14 @@ void main() async {
   final albumRepository = AlbumRepository(AlbumDao(db));
   final settingsRepository = SettingsRepository(SettingsDao(db));
   final playbackStateRepository = PlaybackStateRepository(PlaybackStateDao(db));
+  final lyricsDio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)));
+  final lyricsRepository = LyricsRepository(
+    dio: lyricsDio,
+    cacheDao: LyricsCacheDao(db),
+    lrclibClient: LrclibClient(lyricsDio),
+    localLrcFileReader: LocalLrcFileReader(),
+  );
+  final lyricsPrefetchService = LyricsPrefetchService(repository: lyricsRepository);
 
   final audioHandler = await AudioService.init(
     builder: () => AudioPlayerHandler(
@@ -39,6 +53,7 @@ void main() async {
       albumRepository: albumRepository,
       settingsRepository: settingsRepository,
       playbackStateRepository: playbackStateRepository,
+      lyricsPrefetchService: lyricsPrefetchService,
     ),
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.tamusic.app.ta_music.playback',

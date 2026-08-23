@@ -13,6 +13,7 @@ import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
+import 'lyrics_cache_debug_screen.dart';
 
 /// Settings — "Manage folders" pulled forward from Phase 7 (approved
 /// 2026-08-18). No dedicated Stitch design exists for a folder-management
@@ -132,6 +133,23 @@ class SettingsScreen extends ConsumerWidget {
                 final repo = await ref.read(settingsRepositoryProvider.future);
                 await repo.setResumeAfterInterruption(value);
               },
+            ),
+          ),
+          const SizedBox(height: AppSpacing.stackLg),
+          Text('Diagnostics', style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.stackSm),
+          GlassContainer(
+            padding: EdgeInsets.zero,
+            child: ListTile(
+              leading: const Icon(Icons.lyrics_outlined),
+              title: const Text('Lyrics cache'),
+              subtitle: const Text(
+                'Temporary debug view of the lyrics fallback chain\'s cache — remove before release.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const LyricsCacheDebugScreen()),
+              ),
             ),
           ),
         ],

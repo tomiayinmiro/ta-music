@@ -4,6 +4,7 @@ import '../repositories/album_repository.dart';
 import '../repositories/artist_repository.dart';
 import '../repositories/favorite_repository.dart';
 import '../repositories/library_repository.dart';
+import '../repositories/lyrics_repository.dart';
 import '../repositories/playback_state_repository.dart';
 import '../repositories/playlist_repository.dart';
 import '../repositories/settings_repository.dart';
@@ -11,6 +12,7 @@ import '../repositories/song_repository.dart';
 import '../services/aura_service.dart';
 import '../services/stats_service.dart';
 import 'database_providers.dart';
+import 'network_providers.dart';
 
 // Hand-written providers rather than `@riverpod` codegen — see
 // `lib/data/models/song.dart` for why.
@@ -69,5 +71,14 @@ final auraServiceProvider = FutureProvider<AuraService>((ref) async {
     playHistoryDao: await ref.watch(playHistoryDaoProvider.future),
     songDao: await ref.watch(songDaoProvider.future),
     listeningSegmentDao: await ref.watch(listeningSegmentDaoProvider.future),
+  );
+});
+
+final lyricsRepositoryProvider = FutureProvider<LyricsRepository>((ref) async {
+  return LyricsRepository(
+    dio: ref.watch(dioProvider),
+    cacheDao: await ref.watch(lyricsCacheDaoProvider.future),
+    lrclibClient: ref.watch(lrclibClientProvider),
+    localLrcFileReader: ref.watch(localLrcFileReaderProvider),
   );
 });

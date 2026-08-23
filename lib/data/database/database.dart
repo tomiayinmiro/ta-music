@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 6;
+const int kDatabaseVersion = 8;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -20,6 +20,8 @@ final Map<int, _Migration> _migrations = {
   4: _migrationV4,
   5: _migrationV5,
   6: _migrationV6,
+  7: _migrationV7,
+  8: _migrationV8,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -326,4 +328,59 @@ Future<void> _migrationV6(Database db) async {
   await db.execute(
     'CREATE INDEX idx_listening_segments_song_id ON listening_segments (song_id)',
   );
+}
+
+/// Phase 5 batch 1 (Lyrics): drops the `lyrics` table Phase 1 created —
+/// song_id-keyed, with `is_synced`/`translation_text`/`translation_language`
+/// columns baked in before this phase's actual shape was decided — and was
+/// never read or written by any code. Replaced with `lyrics_cache`, keyed by
+/// a normalized (artist, title) pair rather than `song_id`: a rescan can in
+/// principle regenerate a song's row (and therefore its id), and the same
+/// artist/title should hit the same cached lookup regardless of which
+/// library row asked for it. `lyrics_text IS NULL` means "looked up, no
+/// lyrics found" (see `LyricsRepository` for the 7-day re-fetch TTL on
+/// those rows vs. indefinite caching for a successful lookup).
+Future<void> _migrationV7(Database db) async {
+  await db.execute('DROP TABLE IF EXISTS lyrics');
+
+  await db.execute('''
+    CREATE TABLE lyrics_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      artist_key TEXT NOT NULL,
+      title_key TEXT NOT NULL,
+      lyrics_text TEXT,
+      fetched_at INTEGER NOT NULL,
+      source TEXT NOT NULL DEFAULT 'lyrics.ovh',
+      UNIQUE (artist_key, title_key)
+    )
+  ''');
+}
+
+/// Phase 5 batch 1 rework: pivots from lyrics.ovh-only to a 3-layer fallback
+/// chain (LRCLIB primary, lyrics.ovh fallback, local `.lrc` sidecar last —
+/// see `LyricsRepository`) and adds real per-line timing support, since
+/// LRCLIB and local `.lrc` files both carry `[mm:ss.xx]` timestamps that
+/// lyrics.ovh's plain text never could.
+///
+/// Wipes existing `lyrics_cache` rows rather than migrating them in place
+/// (approved 2026-08-23) — Batch 1 only shipped to the developer's own
+/// devices, whose cache is entirely lyrics.ovh-sourced null results from a
+/// coverage bug (see `LyricsRepository`'s original doc), not real data worth
+/// preserving.
+Future<void> _migrationV8(Database db) async {
+  await db.execute('DROP TABLE IF EXISTS lyrics_cache');
+
+  await db.execute('''
+    CREATE TABLE lyrics_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      artist_key TEXT NOT NULL,
+      title_key TEXT NOT NULL,
+      source TEXT NOT NULL,
+      has_synced_timing INTEGER NOT NULL DEFAULT 0,
+      synced_lyrics_lrc TEXT,
+      plain_lyrics TEXT,
+      fetched_at INTEGER NOT NULL,
+      UNIQUE (artist_key, title_key)
+    )
+  ''');
 }

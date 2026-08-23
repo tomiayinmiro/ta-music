@@ -12,7 +12,7 @@ const _expectedTables = {
   'favorites',
   'play_history',
   'excluded_folders',
-  'lyrics',
+  'lyrics_cache',
   'custom_eq_presets',
   'scan_roots',
   'settings',

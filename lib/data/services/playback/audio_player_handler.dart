@@ -15,6 +15,7 @@ import '../../repositories/album_repository.dart';
 import '../../repositories/playback_state_repository.dart';
 import '../../repositories/settings_repository.dart';
 import '../../repositories/song_repository.dart';
+import '../lyrics/lyrics_prefetch_service.dart';
 import 'listening_time_accumulator.dart';
 import 'next_aware_shuffle_order.dart';
 import 'playback_handler.dart';
@@ -45,6 +46,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     required this._albumRepository,
     required this._settingsRepository,
     required this._playbackStateRepository,
+    required this._lyricsPrefetchService,
   }) {
     _init();
   }
@@ -53,6 +55,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   final AlbumRepository _albumRepository;
   final SettingsRepository _settingsRepository;
   final PlaybackStateRepository _playbackStateRepository;
+  final LyricsPrefetchService _lyricsPrefetchService;
 
   final _logger = Logger();
 
@@ -281,13 +284,21 @@ class AudioPlayerHandler extends BaseAudioHandler
   }
 
   void _onIndexChanged(int? index) {
+    Song? newSong;
     if (index != null && index < queueSongs.length) {
-      final item = _mediaItemFor(queueSongs[index]);
+      newSong = queueSongs[index];
+      final item = _mediaItemFor(newSong);
       mediaItem.add(item);
     } else {
       mediaItem.add(null);
     }
     unawaited(_savePlaybackState());
+
+    // Kicks off a debounced background lyrics fetch for the new song — see
+    // `LyricsPrefetchService`'s doc for why this event (the same one that
+    // updates the lockscreen `mediaItem`), not the 50%-played
+    // `recordPlay` call below, is the right "song started" signal.
+    _lyricsPrefetchService.onSongChanged(newSong);
 
     // Close out the outgoing song's listening window before crediting the
     // incoming one — without this, a skip mid-song would misattribute
@@ -581,6 +592,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     _instrumentationTimer?.cancel();
     _listenFlushTimer?.cancel();
     _lifecycleListener?.dispose();
+    _lyricsPrefetchService.dispose();
     await _player.dispose();
   }
 
