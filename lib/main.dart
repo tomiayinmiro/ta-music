@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 
 import 'app.dart';
 import 'data/database/daos/album_dao.dart';
@@ -23,6 +24,8 @@ import 'data/services/lyrics/lrclib_client.dart';
 import 'data/services/lyrics/local_lrc_file_reader.dart';
 import 'data/services/lyrics/lyrics_prefetch_service.dart';
 import 'data/services/playback/audio_player_handler.dart';
+
+final _log = Logger();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +50,11 @@ void main() async {
   );
   final lyricsPrefetchService = LyricsPrefetchService(repository: lyricsRepository);
 
+  // TODO(notification-controls-audit): bracketing logging added 2026-08-27
+  // to chase a one-off report of the Android notification showing
+  // title/artist with no control buttons — see CLAUDE.md. Remove once
+  // resolved or confidently ruled out.
+  _log.i('[audio_service] AudioService.init starting');
   final audioHandler = await AudioService.init(
     builder: () => AudioPlayerHandler(
       songRepository: songRepository,
@@ -69,13 +77,16 @@ void main() async {
       androidStopForegroundOnPause: true,
     ),
   );
+  _log.i('[audio_service] AudioService.init done');
 
   // Bug 3 (device testing pass): restore the last-saved queue/position
   // before the UI ever shows, so the mini player and Now Playing screen
   // never render an initial "nothing playing" state that then jumps to
   // the restored song a frame later. Never starts playback — always
   // restores paused, per CLAUDE.md's "user chooses when to resume" rule.
+  _log.i('[audio_service] restoreState starting');
   await audioHandler.restoreState();
+  _log.i('[audio_service] restoreState done');
 
   runApp(
     ProviderScope(

@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart'
-    show AppLifecycleListener, AppLifecycleState;
+    show AppLifecycleListener, AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:just_audio/just_audio.dart';
 import 'package:logger/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -78,15 +78,13 @@ class AudioPlayerHandler extends BaseAudioHandler
   Duration? get duration => _player.duration;
 
   @override
-  Stream<PlaybackStatus> get statusStream =>
-      _player.playerStateStream.map(_toStatus);
+  Stream<PlaybackStatus> get statusStream => _player.playerStateStream.map(_toStatus);
   PlaybackStatus get status => _toStatus(_player.playerState);
 
   @override
   Stream<bool> get shuffleModeStream => _player.shuffleModeEnabledStream;
   @override
-  Stream<PlayerRepeatMode> get repeatModeStream =>
-      _player.loopModeStream.map(_toRepeatMode);
+  Stream<PlayerRepeatMode> get repeatModeStream => _player.loopModeStream.map(_toRepeatMode);
 
   @override
   bool get hasNext => _relativeIndex(1) != null;
@@ -152,7 +150,18 @@ class AudioPlayerHandler extends BaseAudioHandler
   // firing.
   AppLifecycleListener? _lifecycleListener;
 
+  // TODO(notification-controls-audit): temporary instrumentation added
+  // 2026-08-27 to chase a one-off, non-reproducible report of the Android
+  // notification showing title/artist with no play/pause/skip buttons — see
+  // CLAUDE.md. Remove once we either root-cause it from a real logcat
+  // capture or are confident it's gone. `_memoryPressureObserver` keeps this
+  // instance alive for the same reason as `_lifecycleListener` above.
+  StreamSubscription<Object>? _asyncErrorSubscription;
+  _MemoryPressureObserver? _memoryPressureObserver;
+
   Future<void> _init() async {
+    _logger.i('[audio_service] AudioPlayerHandler initializing');
+
     // Android 13+ needs this granted before the foreground service's
     // notification (lockscreen/notification controls) can actually show —
     // declaring it in the manifest alone isn't enough. Fire-and-forget: if
@@ -162,9 +171,34 @@ class AudioPlayerHandler extends BaseAudioHandler
     }
 
     _player.playbackEventStream.listen(
-      _broadcastState,
-      onError: (Object e, StackTrace st) {},
+      (_) => _broadcastState(),
+      // TODO(notification-controls-audit): this used to swallow stream
+      // errors silently — if just_audio's own event stream ever errors out,
+      // no further state broadcast happens until the next successful event,
+      // and we'd previously have no trace of why.
+      onError: (Object e, StackTrace st) {
+        _logger.w('[audio_service] playbackEventStream error', error: e, stackTrace: st);
+      },
     );
+    // TODO(notification-controls-audit): audio_service pushes mediaItem
+    // (title/artist/art) and playbackState (controls) to the Android
+    // notification via two independent platform-channel calls with no
+    // ordering guarantee between them — see the package's
+    // `_observeMediaItem`/`_observePlaybackState`. Broadcasting the full
+    // control set synchronously in the same tick as every mediaItem update
+    // (see `_onIndexChanged`) narrows, but can't fully close, the window
+    // where the notification could briefly show metadata against a stale
+    // (possibly seeded-empty) controls state.
+    playbackState.listen(_logIfControlsIncomplete);
+    // TODO(notification-controls-audit): `AudioService.asyncError` surfaces
+    // exceptions from the platform-channel calls above (e.g. `setState`
+    // failing under memory pressure) — previously nothing in the app
+    // listened to it, so such a failure left zero trace.
+    _asyncErrorSubscription = AudioService.asyncError.listen((e) {
+      _logger.e('[audio_service] asyncError from platform channel', error: e);
+    });
+    _memoryPressureObserver = _MemoryPressureObserver(_logger)..attach();
+
     _player.currentIndexStream.listen(_onIndexChanged);
     _player.positionStream.listen(_onPosition);
     _player.processingStateStream.listen((state) {
@@ -195,17 +229,13 @@ class AudioPlayerHandler extends BaseAudioHandler
     // still persists the current position.
     _lifecycleListener = AppLifecycleListener(
       onStateChange: (state) {
-        if (state == AppLifecycleState.paused ||
-            state == AppLifecycleState.detached) {
+        if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
           unawaited(_savePlaybackState());
         }
       },
     );
 
-    _instrumentationTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => _logMemorySnapshot(),
-    );
+    _instrumentationTimer = Timer.periodic(const Duration(minutes: 1), (_) => _logMemorySnapshot());
   }
 
   void _logMemorySnapshot() {
@@ -215,6 +245,29 @@ class AudioPlayerHandler extends BaseAudioHandler
       'coverArtCache: ${_coverArtCache.length}, status: $status, '
       'index: $currentIndex',
     );
+  }
+
+  // TODO(notification-controls-audit): the full expected control set is
+  // always exactly [skipToPrevious, play-or-pause, stop, skipToNext] with
+  // MediaAction.seek in systemActions — see `_broadcastState`. This watches
+  // every emission on `playbackState` (not just the ones `_broadcastState`
+  // itself constructs, which by definition are always complete) so it also
+  // catches the base-class-seeded initial empty state and anything
+  // `super.stop()` does. Only logs when a song is actually loaded
+  // (`mediaItem.valueOrNull != null`) — an empty control set is expected and
+  // correct with nothing queued.
+  void _logIfControlsIncomplete(PlaybackState state) {
+    final hasSong = mediaItem.valueOrNull != null;
+    final hasFullControls = state.controls.length >= 4;
+    final hasSeek = state.systemActions.contains(MediaAction.seek);
+    if (hasSong && (!hasFullControls || !hasSeek)) {
+      _logger.w(
+        '[audio_service] PlaybackState emitted with incomplete controls while a song is '
+        'loaded — controls: ${state.controls}, systemActions: ${state.systemActions}, '
+        'processingState: ${state.processingState}, playing: ${state.playing}, '
+        'mediaItem: ${mediaItem.valueOrNull?.id}',
+      );
+    }
   }
 
   // --- Status/repeat mapping -----------------------------------------
@@ -247,7 +300,11 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   // --- OS-facing state broadcast --------------------------------------
 
-  void _broadcastState(PlaybackEvent event) {
+  // No longer takes a `PlaybackEvent` — called both reactively off
+  // `_player.playbackEventStream` and directly from `_onIndexChanged`, in
+  // the same synchronous tick as the paired `mediaItem` update (see
+  // `_onIndexChanged`'s TODO(notification-controls-audit) for why).
+  void _broadcastState() {
     final playing = _player.playing;
     playbackState.add(
       playbackState.value.copyWith(
@@ -278,7 +335,7 @@ class AudioPlayerHandler extends BaseAudioHandler
         updatePosition: _player.position,
         bufferedPosition: _player.bufferedPosition,
         speed: _player.speed,
-        queueIndex: event.currentIndex,
+        queueIndex: _player.currentIndex,
       ),
     );
   }
@@ -292,6 +349,11 @@ class AudioPlayerHandler extends BaseAudioHandler
     } else {
       mediaItem.add(null);
     }
+    // TODO(notification-controls-audit): paired with the mediaItem update
+    // above in the same synchronous tick, rather than waiting on the next
+    // unrelated `playbackEventStream` event — see the audit note on
+    // `_broadcastState`.
+    _broadcastState();
     unawaited(_savePlaybackState());
 
     // Kicks off a debounced background lyrics fetch for the new song — see
@@ -353,12 +415,8 @@ class AudioPlayerHandler extends BaseAudioHandler
       title: song.displayTitle,
       artist: song.displayArtist,
       album: song.album,
-      duration: song.durationMs != null
-          ? Duration(milliseconds: song.durationMs!)
-          : null,
-      artUri: _coverArtCache[song.albumId] != null
-          ? Uri.file(_coverArtCache[song.albumId]!)
-          : null,
+      duration: song.durationMs != null ? Duration(milliseconds: song.durationMs!) : null,
+      artUri: _coverArtCache[song.albumId] != null ? Uri.file(_coverArtCache[song.albumId]!) : null,
     );
   }
 
@@ -518,8 +576,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       if (persisted.currentSongId != null) persisted.currentSongId!,
     };
     final fetchedById = {
-      for (final song in await _songRepository.getByIds(allIds.toList()))
-        song.id!: song,
+      for (final song in await _songRepository.getByIds(allIds.toList())) song.id!: song,
     };
 
     final existenceChecks = await Future.wait([
@@ -543,9 +600,7 @@ class AudioPlayerHandler extends BaseAudioHandler
         ? -1
         : resolvedQueue.indexWhere((s) => s.id == currentSong.id);
 
-    if (currentSong == null ||
-        fileExists[currentSong.id] != true ||
-        restoredIndex == -1) {
+    if (currentSong == null || fileExists[currentSong.id] != true || restoredIndex == -1) {
       await _playbackStateRepository.clear();
       return;
     }
@@ -556,9 +611,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     _resetItemTracking(restoredIndex);
 
     final restoredPosition = Duration(milliseconds: persisted.positionMs);
-    _activeShuffleOrder = NextAwareShuffleOrder(
-      getCurrentIndex: () => _player.currentIndex,
-    );
+    _activeShuffleOrder = NextAwareShuffleOrder(getCurrentIndex: () => _player.currentIndex);
     final duration = await _player.setAudioSources(
       [for (final s in resolvedQueue) AudioSource.uri(Uri.file(s.path))],
       initialIndex: restoredIndex,
@@ -580,6 +633,11 @@ class AudioPlayerHandler extends BaseAudioHandler
     await _player.setShuffleModeEnabled(persisted.shuffleEnabled);
     await _player.setLoopMode(_fromRepeatMode(persisted.repeatMode));
     mediaItem.add(_mediaItemFor(resolvedQueue[restoredIndex]));
+    // TODO(notification-controls-audit): this is the cold-start path — the
+    // one most likely to race the notification, since `main()` calls this
+    // right after the un-awaited platform-channel setup in
+    // `AudioService.init()`. See `_broadcastState`'s audit note.
+    _broadcastState();
   }
 
   /// Not invoked anywhere in normal operation — this handler is a
@@ -588,10 +646,13 @@ class AudioPlayerHandler extends BaseAudioHandler
   /// the timers/listener above a documented teardown path rather than
   /// leaving them as fields nothing ever reads.
   Future<void> dispose() async {
+    _logger.i('[audio_service] AudioPlayerHandler disposing');
     _seekSaveDebounce?.cancel();
     _instrumentationTimer?.cancel();
     _listenFlushTimer?.cancel();
     _lifecycleListener?.dispose();
+    unawaited(_asyncErrorSubscription?.cancel());
+    _memoryPressureObserver?.detach();
     _lyricsPrefetchService.dispose();
     await _player.dispose();
   }
@@ -610,9 +671,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   /// wrongly disabled/inconsistent when tapping deep into a long list.
   @override
   Future<void> playFromSong(Song song, List<Song> sourceList) async {
-    final tappedIndex = sourceList.indexWhere(
-      (s) => s.id != null && s.id == song.id,
-    );
+    final tappedIndex = sourceList.indexWhere((s) => s.id != null && s.id == song.id);
     final newQueue = tappedIndex >= 0 ? sourceList : [song];
     final initialIndex = tappedIndex >= 0 ? tappedIndex : 0;
 
@@ -620,9 +679,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     _resetItemTracking(initialIndex);
     _queueSongsSubject.add(newQueue);
     queue.add([for (final s in newQueue) _mediaItemFor(s)]);
-    _activeShuffleOrder = NextAwareShuffleOrder(
-      getCurrentIndex: () => _player.currentIndex,
-    );
+    _activeShuffleOrder = NextAwareShuffleOrder(getCurrentIndex: () => _player.currentIndex);
     await _player.setAudioSources(
       [for (final s in newQueue) AudioSource.uri(Uri.file(s.path))],
       initialIndex: initialIndex,
@@ -667,10 +724,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> playNext(Song song) async {
     final insertAt = (currentIndex ?? -1) + 1;
     await _resolveCoverArt([song]);
-    await _player.insertAudioSource(
-      insertAt,
-      AudioSource.uri(Uri.file(song.path)),
-    );
+    await _player.insertAudioSource(insertAt, AudioSource.uri(Uri.file(song.path)));
     final songs = [...queueSongs]..insert(insertAt, song);
     _queueSongsSubject.add(songs);
     final items = [...queue.value]..insert(insertAt, _mediaItemFor(song));
@@ -717,8 +771,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> setShuffleEnabled(bool enabled) =>
-      _player.setShuffleModeEnabled(enabled);
+  Future<void> setShuffleEnabled(bool enabled) => _player.setShuffleModeEnabled(enabled);
 
   @override
   Future<void> setPlayerRepeatMode(PlayerRepeatMode mode) =>
@@ -737,8 +790,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       setPlayerRepeatMode(switch (repeatMode) {
         AudioServiceRepeatMode.none => PlayerRepeatMode.off,
         AudioServiceRepeatMode.one => PlayerRepeatMode.one,
-        AudioServiceRepeatMode.all ||
-        AudioServiceRepeatMode.group => PlayerRepeatMode.all,
+        AudioServiceRepeatMode.all || AudioServiceRepeatMode.group => PlayerRepeatMode.all,
       });
 
   // --- BaseAudioHandler overrides --------------------------------------
@@ -754,23 +806,41 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   @override
   Future<void> stop() async {
+    _logger.i('[audio_service] stop() called — index: $currentIndex, status: $status');
     await _player.stop();
     return super.stop();
+  }
+
+  // TODO(notification-controls-audit): the OS calling either of these is a
+  // real "the service is being torn down/rebuilt" signal worth a trail —
+  // neither was overridden (and neither logged) before this pass.
+  // `onTaskRemoved` fires when the user swipes the app from Recents;
+  // `BaseAudioHandler`'s default `onNotificationDeleted` already calls
+  // `stop()`, so this only adds a log line ahead of the same behavior.
+  @override
+  Future<void> onTaskRemoved() async {
+    _logger.i(
+      '[audio_service] onTaskRemoved (app swiped from recents) — '
+      'playing: ${_player.playing}, index: $currentIndex',
+    );
+    return super.onTaskRemoved();
+  }
+
+  @override
+  Future<void> onNotificationDeleted() async {
+    _logger.i('[audio_service] onNotificationDeleted (notification swiped away)');
+    return super.onNotificationDeleted();
   }
 
   @override
   Future<void> seek(Duration position) async {
     await _player.seek(position);
     _seekSaveDebounce?.cancel();
-    _seekSaveDebounce = Timer(
-      const Duration(seconds: 2),
-      () => unawaited(_savePlaybackState()),
-    );
+    _seekSaveDebounce = Timer(const Duration(seconds: 2), () => unawaited(_savePlaybackState()));
   }
 
   @override
-  Future<void> skipToQueueItem(int index) =>
-      _player.seek(Duration.zero, index: index);
+  Future<void> skipToQueueItem(int index) => _player.seek(Duration.zero, index: index);
 
   // Bug 5 (device testing pass): skipping a track always resumes
   // playback, regardless of whether the player was paused beforehand —
@@ -794,5 +864,26 @@ class AudioPlayerHandler extends BaseAudioHandler
       await _player.seekToPrevious();
     }
     await play();
+  }
+}
+
+// TODO(notification-controls-audit): `AppLifecycleListener` (used elsewhere
+// in this file) mixes in `WidgetsBindingObserver` but doesn't override
+// `didHaveMemoryPressure`, so it never forwards Android's low-memory
+// signal — there was previously no hook for this anywhere in the app. A
+// dedicated observer, separate from `AppLifecycleListener`, is the smallest
+// way to add one.
+class _MemoryPressureObserver with WidgetsBindingObserver {
+  _MemoryPressureObserver(this._logger);
+
+  final Logger _logger;
+
+  void attach() => WidgetsBinding.instance.addObserver(this);
+
+  void detach() => WidgetsBinding.instance.removeObserver(this);
+
+  @override
+  void didHaveMemoryPressure() {
+    _logger.w('[audio_service] OS low-memory warning received (didHaveMemoryPressure)');
   }
 }
