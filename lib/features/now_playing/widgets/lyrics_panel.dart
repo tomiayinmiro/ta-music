@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -157,50 +159,169 @@ class _LyricsLines extends ConsumerStatefulWidget {
   ConsumerState<_LyricsLines> createState() => _LyricsLinesState();
 }
 
+/// Karaoke-style layout (YouTube Music/Spotify pattern, per Tomi's spec) —
+/// the current line (or, in estimated-sync mode, the current highlighted
+/// region — see `estimatedRegionRange`) sits at ~30% down the viewport,
+/// with past lines dimmed above and upcoming lines dimmed below, and the
+/// view glides smoothly to the next line/region rather than jumping.
+///
+/// Built on a real `SingleChildScrollView` + `ScrollController`, NOT a
+/// manually `Transform.translate`d, fixed-row-height `Column` (the
+/// previous approach) — that assumed every lyric renders as exactly one
+/// visual line, so a lyric long enough to wrap onto 2-3 lines on a narrow
+/// phone screen got crammed into a slot sized for one, overflowing past
+/// the panel's bottom edge ("BOTTOM OVERFLOWED BY n PIXELS", the bug this
+/// replaced). Each line now takes its own natural, wrapped height, and
+/// `Scrollable.ensureVisible(alignment: _currentLinePosition)` computes the
+/// scroll offset needed to keep the live line/region at that position
+/// directly from the render tree's actual (variable) geometry — no manual
+/// cumulative-height math needed. A `GlobalKey` per line is how
+/// `ensureVisible` finds each line's `BuildContext`; all lines are built
+/// eagerly (a `Column` inside the scroll view, not `ListView.builder`) so
+/// every key resolves to a mounted context regardless of current scroll
+/// position — a song has at most a few hundred lines, cheap to build all
+/// at once.
 class _LyricsLinesState extends ConsumerState<_LyricsLines> {
-  static const _itemExtent = 44.0;
+  /// Fraction down the viewport the current line's (or region's) leading
+  /// edge rests at — "about 1/3 down", not top, center, or bottom.
+  static const _currentLinePosition = 0.3;
 
-  final _scrollController = ScrollController();
-  int? _lastCenteredIndex;
+  static const _resumeAfterInactivity = Duration(seconds: 3);
+
+  /// Fraction of the viewport, at each edge, that fades to transparent —
+  /// hints at content continuing beyond the frame without a hard cut.
+  static const _fadeFraction = 0.16;
+
+  final ScrollController _scrollController = ScrollController();
+
+  /// Marks the viewport box itself (see [_isIndexVisible]) — distinct from
+  /// the per-line keys below.
+  final GlobalKey _viewportKey = GlobalKey();
+
+  /// One key per lyric line, rebuilt whenever the line count changes (a new
+  /// song) — see the class doc for why `ensureVisible` needs these to
+  /// always resolve to a mounted context.
+  late List<GlobalKey> _lineKeys;
+
+  bool _userScrolling = false;
+
+  /// The auto-follow index the view has already glided to (or is gliding
+  /// to) — `null` until the first sync, which jumps instead of animating.
+  /// Distinct from the always-fresh [_liveIndex] below: this one is only
+  /// updated on the auto-follow path, so a resume after user-scrolling
+  /// always targets where playback actually is, not where auto-follow left
+  /// off before the user took over.
+  int? _lastAutoIndex;
+  int _liveIndex = 0;
+
+  Timer? _resumeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _lineKeys = List.generate(widget.lines.length, (_) => GlobalKey());
+  }
+
+  @override
+  void didUpdateWidget(covariant _LyricsLines oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lines.length != widget.lines.length) {
+      _lineKeys = List.generate(widget.lines.length, (_) => GlobalKey());
+      _lastAutoIndex = null;
+    }
+  }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _resumeTimer?.cancel();
     super.dispose();
   }
 
-  /// Keeps [index] centered in the viewport. The very first sync (opening
-  /// the panel, or a fresh song) jumps straight there; every sync after
-  /// that animates, so the current line visibly glides into place as
-  /// playback advances rather than snapping each time.
-  void _centerOn(int index, double viewportHeight) {
-    if (_lastCenteredIndex == index) return;
-    final isFirstSync = _lastCenteredIndex == null;
-    _lastCenteredIndex = index;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final target = (index * _itemExtent) - (viewportHeight / 2) + (_itemExtent / 2);
-      final clamped = target.clamp(0.0, _scrollController.position.maxScrollExtent);
-      if (isFirstSync) {
-        _scrollController.jumpTo(clamped);
-      } else {
-        _scrollController.animateTo(
-          clamped,
-          duration: AppMotion.standard,
-          curve: AppMotion.standardEasing,
-        );
-      }
+  void _followIndex(int index, {required bool animate}) {
+    if (index < 0 || index >= _lineKeys.length) return;
+    final keyContext = _lineKeys[index].currentContext;
+    if (keyContext == null) return;
+    Scrollable.ensureVisible(
+      keyContext,
+      alignment: _currentLinePosition,
+      duration: animate ? AppMotion.lyricsGlide : Duration.zero,
+      curve: AppMotion.lyricsGlideEasing,
+    );
+  }
+
+  /// True when [index]'s line currently renders anywhere within the
+  /// visible viewport — used only to let user-scrolling resume auto-follow
+  /// early if the live line drifts entirely off-screen, rather than always
+  /// waiting out [_resumeAfterInactivity].
+  bool _isIndexVisible(int index) {
+    if (index < 0 || index >= _lineKeys.length) return false;
+    final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = _lineKeys[index].currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || box == null || !box.attached) return false;
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: viewportBox);
+    return topLeft.dy + box.size.height > 0 && topLeft.dy < viewportBox.size.height;
+  }
+
+  /// Called every frame from [build] via a post-frame callback — either
+  /// keeps auto-follow in sync with the live current line, or, while the
+  /// user is scrolling, watches for the current line drifting outside the
+  /// visible range so it can resume early.
+  void _syncPosition(int index) {
+    _liveIndex = index;
+
+    if (_userScrolling) {
+      if (!_isIndexVisible(index)) _resumeAuto(index);
+      return;
+    }
+
+    if (_lastAutoIndex == index) return;
+    final isFirstSync = _lastAutoIndex == null;
+    _lastAutoIndex = index;
+    _followIndex(index, animate: !isFirstSync);
+  }
+
+  void _resumeAuto(int index) {
+    _resumeTimer?.cancel();
+    _userScrolling = false;
+    _lastAutoIndex = index;
+    _followIndex(index, animate: true);
+  }
+
+  void _scheduleResume() {
+    _resumeTimer?.cancel();
+    _resumeTimer = Timer(_resumeAfterInactivity, () {
+      if (!mounted) return;
+      _resumeAuto(_liveIndex);
     });
+  }
+
+  /// Only a real user drag starts this way — `Scrollable.ensureVisible`
+  /// drives its own scroll via a ballistic/driven activity, whose
+  /// [ScrollStartNotification.dragDetails] is always null, so auto-follow's
+  /// own scrolling never falsely marks itself as user-initiated (and so
+  /// never schedules a pointless resume timer against itself).
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification && notification.dragDetails != null) {
+      _resumeTimer?.cancel();
+      _userScrolling = true;
+    } else if (notification is ScrollEndNotification && _userScrolling) {
+      _scheduleResume();
+    }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final snapshot = ref.watch(playbackSnapshotProvider).value;
     final position = snapshot?.position ?? Duration.zero;
     final duration = snapshot?.duration ?? snapshot?.currentSong?.duration ?? Duration.zero;
     final playbackService = ref.read(playbackServiceProvider);
 
+    // TODO(future session): per-song +/-0.5s offset adjustment for LRCLIB
+    // timestamps that drift from the actual audio (see the doc comment on
+    // `currentSyncedLyricLineIndex` in lyrics_line_sync.dart) — apply the
+    // stored offset to `position` here once that feature exists.
     final currentIndex = widget.isSynced
         ? currentSyncedLyricLineIndex(
             timestamps: widget.lines.map((l) => l.timestamp!).toList(growable: false),
@@ -212,51 +333,135 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
             lineCount: widget.lines.length,
           );
 
-    return Stack(
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            _centerOn(currentIndex, constraints.maxHeight);
+    // Bug 2 (Option C): a single highlighted line is misleading once
+    // estimated (equal-time-slot) sync drifts from the real audio, so
+    // estimated mode highlights a whole sliding region instead — see
+    // `estimatedRegionLineCount`/`estimatedRegionRange`. Synced lyrics keep
+    // the original single-line highlight since their timing is real.
+    final highlightRange = widget.isSynced
+        ? (start: currentIndex, end: currentIndex)
+        : estimatedRegionRange(
+            currentIndex: currentIndex,
+            lineCount: widget.lines.length,
+            regionSize: estimatedRegionLineCount(lineCount: widget.lines.length, duration: duration),
+          );
 
-            return ListView.builder(
-              controller: _scrollController,
-              padding: EdgeInsets.symmetric(vertical: constraints.maxHeight / 2 - _itemExtent / 2),
-              itemCount: widget.lines.length,
-              itemExtent: _itemExtent,
-              itemBuilder: (context, index) {
-                final isCurrent = index == currentIndex;
-                final line = widget.lines[index];
-                return InkWell(
-                  onTap: () => playbackService.seek(
-                    widget.isSynced
-                        ? line.timestamp!
-                        : lineStartPosition(
-                            lineIndex: index,
-                            duration: duration,
-                            lineCount: widget.lines.length,
-                          ),
-                  ),
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
-                      child: Text(
-                        line.text,
-                        textAlign: TextAlign.center,
-                        style: isCurrent
-                            ? theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)
-                            : theme.textTheme.bodyLarge?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportHeight = constraints.maxHeight;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _syncPosition(currentIndex);
+        });
+
+        return Stack(
+          children: [
+            SizedBox(
+              key: _viewportKey,
+              width: double.infinity,
+              height: viewportHeight,
+              child: ClipRect(
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (rect) => LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: const [
+                      Colors.transparent,
+                      Colors.black,
+                      Colors.black,
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, _fadeFraction, 1 - _fadeFraction, 1.0],
+                  ).createShader(rect),
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _handleScrollNotification,
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      // Extra scroll room above the first line and below
+                      // the last so `Scrollable.ensureVisible`'s
+                      // `alignment` can be satisfied even for lines right
+                      // at either end of the song — without it, the first
+                      // or last line could never reach ~30% down the
+                      // viewport since there's nothing further to scroll
+                      // past them.
+                      padding: EdgeInsets.symmetric(vertical: viewportHeight),
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < widget.lines.length; i++)
+                            _LyricLineRow(
+                              key: _lineKeys[i],
+                              text: widget.lines[i].text,
+                              isHighlighted: i >= highlightRange.start && i <= highlightRange.end,
+                              onTap: () => playbackService.seek(
+                                widget.isSynced
+                                    ? widget.lines[i].timestamp!
+                                    : lineStartPosition(
+                                        lineIndex: i,
+                                        duration: duration,
+                                        lineCount: widget.lines.length,
+                                      ),
                               ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
-                );
-              },
-            );
-          },
+                ),
+              ),
+            ),
+            Positioned(top: 0, right: 0, child: _SyncIndicator(isSynced: widget.isSynced)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LyricLineRow extends StatelessWidget {
+  const _LyricLineRow({
+    super.key,
+    required this.text,
+    required this.isHighlighted,
+    required this.onTap,
+  });
+
+  final String text;
+
+  /// True for the current line in synced mode, or for every line inside
+  /// the current region in estimated mode (Bug 2 / Option C) — either way
+  /// it gets the same bright/bold prominence, per spec. Since a whole
+  /// lyric (even one that wraps onto several visual lines) is a single
+  /// `Text` widget below, it highlights/dims as one visual unit
+  /// automatically — no separate handling needed for wrapped lines.
+  final bool isHighlighted;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        // Bug 1 fix: no fixed height here — a lyric long enough to wrap
+        // onto multiple visual lines on a narrow screen simply makes this
+        // row taller instead of overflowing a slot sized for one line.
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.containerMargin,
+          vertical: AppSpacing.stackSm,
         ),
-        Positioned(top: 0, right: 0, child: _SyncIndicator(isSynced: widget.isSynced)),
-      ],
+        child: AnimatedDefaultTextStyle(
+          duration: AppMotion.lyricsGlide,
+          curve: AppMotion.lyricsGlideEasing,
+          textAlign: TextAlign.center,
+          style: isHighlighted
+              ? theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)
+              : theme.textTheme.bodyLarge!.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+          child: Text(text),
+        ),
+      ),
     );
   }
 }

@@ -29,4 +29,12 @@ class AppMotion {
 
   static const Curve standardEasing = Curves.easeOutCubic;
   static const Curve emphasizedEasing = Curves.easeOutQuint;
+
+  /// The karaoke-style lyrics view's line-to-line glide (Phase 5 batch 1
+  /// display-layout fix) — an ease-*in*-out curve, unlike the two above,
+  /// since this animates a continuous vertical position rather than a
+  /// one-shot UI transition; it needs to visually settle smoothly whether
+  /// the new target is above or below the current one.
+  static const Duration lyricsGlide = Duration(milliseconds: 400);
+  static const Curve lyricsGlideEasing = Curves.easeInOutCubic;
 }

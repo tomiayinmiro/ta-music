@@ -177,4 +177,87 @@ void main() {
       );
     });
   });
+
+  group('estimatedRegionLineCount', () {
+    test('denser lyrics (more lines per second) need more lines per region', () {
+      // 180s / 30 lines = 6s/line -> ~12.5s target / 6 ≈ 2 lines.
+      final denser = estimatedRegionLineCount(
+        lineCount: 30,
+        duration: const Duration(seconds: 180),
+      );
+      // 180s / 10 lines = 18s/line -> ~12.5s target / 18 ≈ 1 -> clamped to 2.
+      final sparser = estimatedRegionLineCount(
+        lineCount: 10,
+        duration: const Duration(seconds: 180),
+      );
+      expect(denser, greaterThanOrEqualTo(sparser));
+    });
+
+    test('scales down for a short, line-dense song', () {
+      // 60s / 60 lines = 1s/line -> ~12.5s target / 1 = 12.5 -> clamped to max.
+      expect(
+        estimatedRegionLineCount(lineCount: 60, duration: const Duration(seconds: 60)),
+        maxEstimatedRegionLines,
+      );
+    });
+
+    test('scales up (clamped) for a long, line-sparse song', () {
+      // 600s / 5 lines = 120s/line -> ~12.5s target / 120 ≈ 0 -> clamped to min.
+      expect(
+        estimatedRegionLineCount(lineCount: 5, duration: const Duration(seconds: 600)),
+        minEstimatedRegionLines,
+      );
+    });
+
+    test('a concrete mid-range example lands within the clamp bounds', () {
+      // 100s / 20 lines = 5s/line -> ~12.5s target / 5 = 2.5 -> rounds to 3 (or 2).
+      final size = estimatedRegionLineCount(lineCount: 20, duration: const Duration(seconds: 100));
+      expect(size, inInclusiveRange(minEstimatedRegionLines, maxEstimatedRegionLines));
+      expect(size, anyOf(2, 3));
+    });
+
+    test('degenerate lineCount or duration returns the minimum region size', () {
+      expect(
+        estimatedRegionLineCount(lineCount: 0, duration: const Duration(seconds: 100)),
+        minEstimatedRegionLines,
+      );
+      expect(
+        estimatedRegionLineCount(lineCount: 10, duration: Duration.zero),
+        minEstimatedRegionLines,
+      );
+    });
+  });
+
+  group('estimatedRegionRange', () {
+    test('starts at currentIndex and spans regionSize lines', () {
+      final range = estimatedRegionRange(currentIndex: 4, lineCount: 30, regionSize: 3);
+      expect(range.start, 4);
+      expect(range.end, 6);
+    });
+
+    test('shifts by one line as currentIndex (playback position) advances', () {
+      final first = estimatedRegionRange(currentIndex: 4, lineCount: 30, regionSize: 3);
+      final next = estimatedRegionRange(currentIndex: 5, lineCount: 30, regionSize: 3);
+      expect(next.start, first.start + 1);
+      expect(next.end, first.end + 1);
+    });
+
+    test('shrinks rather than overruns the last line near the end of the song', () {
+      final range = estimatedRegionRange(currentIndex: 28, lineCount: 30, regionSize: 4);
+      expect(range.start, 28);
+      expect(range.end, 29);
+    });
+
+    test('clamps an out-of-range currentIndex', () {
+      final range = estimatedRegionRange(currentIndex: 99, lineCount: 30, regionSize: 3);
+      expect(range.start, 29);
+      expect(range.end, 29);
+    });
+
+    test('degenerate lineCount returns a zero-width range at index 0', () {
+      final range = estimatedRegionRange(currentIndex: 5, lineCount: 0, regionSize: 3);
+      expect(range.start, 0);
+      expect(range.end, 0);
+    });
+  });
 }

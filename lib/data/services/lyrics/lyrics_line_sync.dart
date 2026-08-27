@@ -49,3 +49,52 @@ int currentSyncedLyricLineIndex({required List<Duration> timestamps, required Du
   }
   return index;
 }
+
+// TODO(future session): LRCLIB's community-contributed synced timing can
+// drift a few seconds off the actual audio for a given song (tighter/looser
+// contributor sync, not fixable at this layer). Planned fix is a per-song,
+// user-adjustable +/-0.5s offset stored alongside the cached lyrics and
+// applied to `position` before it reaches [currentSyncedLyricLineIndex] —
+// don't re-derive this from scratch, the offset just needs to shift the
+// comparison here.
+
+/// How many consecutive lines to highlight together as one "current
+/// section" for estimated (non-synced) lyrics — see [estimatedRegionRange].
+/// A single highlighted line reads as flatly wrong once real playback
+/// drifts from the equal-time-slot estimate ([currentLyricLineIndex]), so a
+/// shifting region of lines reads as "approximately here" instead of
+/// claiming exactness it doesn't have. Sized so the region spans roughly
+/// [_targetRegionSeconds] of estimated playback time regardless of how
+/// dense a song's lines are — a song with short, frequent lines needs more
+/// of them to cover that many seconds; a song with long, sparse lines
+/// needs fewer — then clamped to a range that always still reads visually
+/// as "a few lines," not one and not a whole verse.
+const double _targetRegionSeconds = 12.5;
+const int minEstimatedRegionLines = 2;
+const int maxEstimatedRegionLines = 5;
+
+/// The estimated-sync region size for a song of [duration] with [lineCount]
+/// lines. Returns [minEstimatedRegionLines] for degenerate input.
+int estimatedRegionLineCount({required int lineCount, required Duration duration}) {
+  if (lineCount <= 0 || duration.inMilliseconds <= 0) return minEstimatedRegionLines;
+  final secondsPerLine = duration.inMilliseconds / 1000 / lineCount;
+  if (secondsPerLine <= 0) return minEstimatedRegionLines;
+  final size = (_targetRegionSeconds / secondsPerLine).round();
+  return size.clamp(minEstimatedRegionLines, maxEstimatedRegionLines);
+}
+
+/// The highlighted region for estimated sync: [regionSize] consecutive
+/// lines starting at [currentIndex] (the same anchor
+/// [currentLyricLineIndex] already computes), clamped so it never runs
+/// past the last line — the region shrinks near the end of the song rather
+/// than wrapping or going out of range.
+({int start, int end}) estimatedRegionRange({
+  required int currentIndex,
+  required int lineCount,
+  required int regionSize,
+}) {
+  if (lineCount <= 0) return (start: 0, end: 0);
+  final start = currentIndex.clamp(0, lineCount - 1);
+  final end = (start + regionSize - 1).clamp(0, lineCount - 1);
+  return (start: start, end: end);
+}
