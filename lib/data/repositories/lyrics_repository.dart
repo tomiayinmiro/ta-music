@@ -3,6 +3,7 @@ import 'package:logger/logger.dart';
 
 import '../database/daos/lyrics_cache_dao.dart';
 import '../models/song.dart';
+import '../services/lyrics/artist_match.dart';
 import '../services/lyrics/filename_lyrics_parser.dart';
 import '../services/lyrics/lrc_parser.dart';
 import '../services/lyrics/lrclib_client.dart';
@@ -415,6 +416,14 @@ class LyricsRepository {
     return const LyricsNotFound();
   }
 
+  /// A hit's reported duration more than this far from our file's own
+  /// duration is treated as a possible mismatch — same-song re-encodes/
+  /// re-rips vary by a couple seconds at most, but a genuinely different
+  /// recording (live version, different artist's cover, or — the bug this
+  /// pass fixes — a same-titled different song) routinely differs by much
+  /// more. Matches Tomi's own suggested tolerance.
+  static const _durationTolerance = Duration(seconds: 10);
+
   /// Tries each of [variants] against LRCLIB in order (`get`, then `search`
   /// on a 404) — duration/album passed every time to help LRCLIB pick the
   /// right version when it has multiple — stopping at the first variant
@@ -422,6 +431,21 @@ class LyricsRepository {
   /// LRCLIB layer rather than hammering the remaining variants against a
   /// server that's already failing; the caller still falls through to
   /// lyrics.ovh.
+  ///
+  /// Neither LRCLIB endpoint is trustworthy enough to accept blindly:
+  /// `/api/get` 404s on a duration mismatch (confirmed directly against the
+  /// live API) but its own matching isn't otherwise verified end-to-end
+  /// here, and `/api/search` ranks candidates by text relevance — its
+  /// `artist_name` param is a ranking signal, not a hard filter (also
+  /// confirmed directly: querying with a deliberately wrong artist still
+  /// returns results). So every hit's actual `artistName`/`durationSeconds`
+  /// is checked against what we asked for; either check failing marks
+  /// [_RawHit.isPossibleMismatch] — same signal `variant.isLastResort`
+  /// alone used to be the sole source of, which meant a title with no
+  /// feat. tag (a single, always-non-last-resort variant) could never be
+  /// flagged no matter what came back. That gap is what let a wrong-artist
+  /// same-titled hit through silently — see CLAUDE.md's Phase 5 batch 1
+  /// matching-fix pass.
   Future<_LayerOutcome> _tryLrclib({
     required List<QueryVariant> variants,
     String? album,
@@ -449,11 +473,19 @@ class LyricsRepository {
           cancelToken: cancelToken,
         );
         if (track != null && track.hasLyrics) {
-          _log.i('[lyrics] lrclib attempt ${i + 1} SUCCEEDED');
+          final artistMatches =
+              track.artistName == null || isArtistFuzzyMatch(variant.artist, track.artistName!);
+          final durationMatches = _durationWithinTolerance(duration, track.durationSeconds);
+          final isPossibleMismatch = variant.isLastResort || !artistMatches || !durationMatches;
+          _log.i(
+            '[lyrics] lrclib attempt ${i + 1} SUCCEEDED returnedArtist="${track.artistName}" '
+            'returnedDuration=${track.durationSeconds} artistMatches=$artistMatches '
+            'durationMatches=$durationMatches isPossibleMismatch=$isPossibleMismatch',
+          );
           return _RawHit(
             syncedLrc: track.syncedLyrics,
             plainText: track.plainLyrics,
-            isPossibleMismatch: variant.isLastResort,
+            isPossibleMismatch: isPossibleMismatch,
           );
         }
       } on DioException catch (e) {
@@ -463,6 +495,14 @@ class LyricsRepository {
       }
     }
     return const _Miss();
+  }
+
+  /// True when either duration is unknown (can't verify, don't block) or
+  /// they're within [_durationTolerance] of each other.
+  bool _durationWithinTolerance(Duration? ours, num? theirs) {
+    if (ours == null || theirs == null) return true;
+    final diffSeconds = (theirs - ours.inSeconds).abs();
+    return diffSeconds <= _durationTolerance.inSeconds;
   }
 
   Future<_LayerOutcome> _tryLyricsOvh({

@@ -8,11 +8,23 @@ import 'package:logger/logger.dart';
 /// legitimate miss, not an error).
 @immutable
 class LrclibTrack {
-  const LrclibTrack({this.plainLyrics, this.syncedLyrics, this.durationSeconds});
+  const LrclibTrack({
+    this.plainLyrics,
+    this.syncedLyrics,
+    this.durationSeconds,
+    this.artistName,
+    this.trackName,
+  });
 
   final String? plainLyrics;
   final String? syncedLyrics;
   final num? durationSeconds;
+
+  /// The artist/track name LRCLIB actually has this hit filed under —
+  /// previously discarded entirely, so nothing could ever verify a hit
+  /// actually matches the artist we queried for. See `artist_match.dart`.
+  final String? artistName;
+  final String? trackName;
 
   bool get hasLyrics =>
       (plainLyrics != null && plainLyrics!.trim().isNotEmpty) ||
@@ -48,8 +60,7 @@ class LrclibClient {
       'track_name': trackName,
       'artist_name': artistName,
       if (albumName != null && albumName.trim().isNotEmpty) 'album_name': albumName,
-      if (duration != null && duration > Duration.zero)
-        'duration': duration.inSeconds.toString(),
+      if (duration != null && duration > Duration.zero) 'duration': duration.inSeconds.toString(),
     });
     _logger.i('[lyrics] lrclib GET $uri');
     try {
@@ -114,6 +125,8 @@ class LrclibClient {
       plainLyrics: map['plainLyrics'] as String?,
       syncedLyrics: map['syncedLyrics'] as String?,
       durationSeconds: map['duration'] as num?,
+      artistName: map['artistName'] as String?,
+      trackName: map['trackName'] as String?,
     );
   }
 }

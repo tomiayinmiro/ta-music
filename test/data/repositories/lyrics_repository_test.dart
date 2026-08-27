@@ -521,6 +521,173 @@ void main() {
     );
   });
 
+  group('artist/duration verification against the LRCLIB response (matching-fix pass)', () {
+    // Regression test for the reported bug: "Most High" by Dunsin Oyekan
+    // has no feat. tag, so this is a single, always-non-last-resort variant
+    // — before this pass, isPossibleMismatch could never be set true here
+    // no matter what LRCLIB actually returned.
+    test('a single-variant (no feat. tag) hit with a wrong returned artist is flagged, '
+        'not just accepted because it was never the last-resort variant', () async {
+      await setUp();
+      when(
+        () => lrclibClient.get(
+          trackName: 'Most High',
+          artistName: 'Dunsin Oyekan',
+          albumName: any(named: 'albumName'),
+          duration: any(named: 'duration'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const LrclibTrack(
+          plainLyrics: 'Wrong song lyrics',
+          artistName: 'Nathaniel Bassey',
+          durationSeconds: 390,
+        ),
+      );
+
+      final result = await repo.getLyrics(
+        artist: 'Dunsin Oyekan',
+        title: 'Most High',
+        duration: const Duration(seconds: 472),
+      );
+
+      expect(result, isA<LyricsFound>());
+      expect((result as LyricsFound).isPossibleMismatch, isTrue);
+    });
+
+    test(
+      'a matching returned artist and duration is NOT flagged, even off the sole variant',
+      () async {
+        await setUp();
+        when(
+          () => lrclibClient.get(
+            trackName: 'Most High',
+            artistName: 'Dunsin Oyekan',
+            albumName: any(named: 'albumName'),
+            duration: any(named: 'duration'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => const LrclibTrack(
+            plainLyrics: 'Correct song lyrics',
+            artistName: 'Dunsin Oyekan',
+            durationSeconds: 472,
+          ),
+        );
+
+        final result = await repo.getLyrics(
+          artist: 'Dunsin Oyekan',
+          title: 'Most High',
+          duration: const Duration(seconds: 472),
+        );
+
+        expect(result, isA<LyricsFound>());
+        expect((result as LyricsFound).isPossibleMismatch, isFalse);
+      },
+    );
+
+    test('a returned duration exactly at the 10s tolerance boundary is not flagged', () async {
+      await setUp();
+      when(
+        () => lrclibClient.get(
+          trackName: any(named: 'trackName'),
+          artistName: any(named: 'artistName'),
+          albumName: any(named: 'albumName'),
+          duration: any(named: 'duration'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const LrclibTrack(
+          plainLyrics: 'Lyrics',
+          artistName: 'Some Artist',
+          durationSeconds: 310,
+        ),
+      );
+
+      final result = await repo.getLyrics(
+        artist: 'Some Artist',
+        title: 'A Song',
+        duration: const Duration(seconds: 300),
+      );
+
+      expect((result as LyricsFound).isPossibleMismatch, isFalse);
+    });
+
+    test('a returned duration 1 second past the tolerance is flagged', () async {
+      await setUp();
+      when(
+        () => lrclibClient.get(
+          trackName: any(named: 'trackName'),
+          artistName: any(named: 'artistName'),
+          albumName: any(named: 'albumName'),
+          duration: any(named: 'duration'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const LrclibTrack(
+          plainLyrics: 'Lyrics',
+          artistName: 'Some Artist',
+          durationSeconds: 311,
+        ),
+      );
+
+      final result = await repo.getLyrics(
+        artist: 'Some Artist',
+        title: 'A Song',
+        duration: const Duration(seconds: 300),
+      );
+
+      expect((result as LyricsFound).isPossibleMismatch, isTrue);
+    });
+
+    test('no local duration to compare against skips the duration check entirely', () async {
+      await setUp();
+      when(
+        () => lrclibClient.get(
+          trackName: any(named: 'trackName'),
+          artistName: any(named: 'artistName'),
+          albumName: any(named: 'albumName'),
+          duration: any(named: 'duration'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => const LrclibTrack(
+          plainLyrics: 'Lyrics',
+          artistName: 'Some Artist',
+          durationSeconds: 999,
+        ),
+      );
+
+      final result = await repo.getLyrics(artist: 'Some Artist', title: 'A Song');
+
+      expect((result as LyricsFound).isPossibleMismatch, isFalse);
+    });
+
+    test(
+      'a response with no artistName at all (older/sparse data) skips the artist check',
+      () async {
+        await setUp();
+        when(
+          () => lrclibClient.get(
+            trackName: any(named: 'trackName'),
+            artistName: any(named: 'artistName'),
+            albumName: any(named: 'albumName'),
+            duration: any(named: 'duration'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => const LrclibTrack(plainLyrics: 'Lyrics', durationSeconds: 300));
+
+        final result = await repo.getLyrics(
+          artist: 'Some Artist',
+          title: 'A Song',
+          duration: const Duration(seconds: 300),
+        );
+
+        expect((result as LyricsFound).isPossibleMismatch, isFalse);
+      },
+    );
+  });
+
   group('filename fallback for tag-less files', () {
     test('missing ID3 recovers via filename parsing and proceeds with the lookup', () async {
       await setUp();

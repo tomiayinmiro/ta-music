@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 9;
+const int kDatabaseVersion = 10;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -23,6 +23,7 @@ final Map<int, _Migration> _migrations = {
   7: _migrationV7,
   8: _migrationV8,
   9: _migrationV9,
+  10: _migrationV10,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -415,4 +416,14 @@ Future<void> _migrationV9(Database db) async {
       UNIQUE (artist_key, title_key)
     )
   ''');
+}
+
+/// Phase 5 batch 1 matching-fix pass: no schema change — `is_possible_mismatch`
+/// already exists from v9 — just a fresh start for the cache. Every row
+/// currently in it was produced by the flawed matching logic this migration
+/// ships alongside (LRCLIB hits accepted with no artist/duration
+/// verification against the response, e.g. the wrong-artist "Most High"
+/// case), so nothing in it is trustworthy data worth preserving.
+Future<void> _migrationV10(Database db) async {
+  await db.execute('DELETE FROM lyrics_cache');
 }
