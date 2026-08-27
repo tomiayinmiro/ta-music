@@ -496,7 +496,7 @@ class _SinglesListState extends ConsumerState<_SinglesList> {
           return const EmptyState(
             icon: Icons.audiotrack_rounded,
             title: 'No singles yet',
-            message: 'Scan your library from Settings to see standalone tracks here.',
+            message: 'Scan your library from Settings to see your songs here.',
           );
         }
         final sorted = _sortSongs(songs, widget.sort);

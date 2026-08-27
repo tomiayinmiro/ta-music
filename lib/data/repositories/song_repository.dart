@@ -20,7 +20,9 @@ class SongRepository {
   Stream<List<Song>> watchByArtist(int artistId) =>
       watchQuery({'songs'}, () => _songDao.getByArtistId(artistId));
 
-  Stream<List<Song>> watchSingles() => watchQuery({'songs'}, _songDao.getSingles);
+  /// "Singles" is a flat view of every song, including album tracks — same
+  /// underlying query as [watchAllVisible], kept separate for the UI's sake.
+  Stream<List<Song>> watchSingles() => watchQuery({'songs'}, _songDao.getAllVisible);
 
   /// Songs added in the last 14 days, per CLAUDE.md's Recently Added rule.
   Stream<List<Song>> watchRecentlyAdded() => watchQuery(

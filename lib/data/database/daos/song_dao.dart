@@ -114,22 +114,6 @@ class SongDao {
     return rows.map(Song.fromMap).toList();
   }
 
-  /// Singles: no album tag, or the only track tagged with that album.
-  Future<List<Song>> getSingles({String orderBy = 'title COLLATE NOCASE'}) async {
-    final rows = await _db.rawQuery('''
-      SELECT s.* FROM songs s
-      WHERE s.is_excluded = 0 AND s.is_missing = 0
-        AND (
-          s.album IS NULL OR TRIM(s.album) = '' OR
-          (SELECT COUNT(*) FROM songs s2
-             WHERE s2.is_excluded = 0 AND s2.is_missing = 0
-               AND s2.album_id IS s.album_id) = 1
-        )
-      ORDER BY $orderBy
-    ''');
-    return rows.map(Song.fromMap).toList();
-  }
-
   Future<List<Song>> getRecentlyAdded({required DateTime since}) async {
     final rows = await _db.query(
       'songs',
