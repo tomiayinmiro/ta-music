@@ -5,6 +5,7 @@ import 'package:logger/logger.dart';
 
 import '../../models/song.dart';
 import '../../repositories/lyrics_repository.dart';
+import 'filename_lyrics_parser.dart';
 
 /// Kicks off a background lyrics lookup whenever the playing song changes,
 /// so the lyrics panel already has an answer cached by the time the user
@@ -60,11 +61,32 @@ class LyricsPrefetchService {
   }
 
   Future<void> _fetch(Song song) async {
-    final artist = song.artist?.trim();
-    final title = song.title?.trim();
+    // Many downloaded files carry no ID3 tags at all — recover a usable
+    // artist/title from the filename before giving up, same resolution
+    // `LyricsRepository.getLyrics` itself performs. Doing it here too (not
+    // just inside the repository) lets a song that resolves to nothing
+    // usable (e.g. "138697771_.mp3") skip without ever calling the
+    // repository, matching this service's existing "skip silently, no
+    // network" contract for untagged songs.
+    final resolved = resolveArtistTitleForLyrics(
+      id3Artist: song.artist,
+      id3Title: song.title,
+      audioFilePath: song.path,
+    );
+    final artist = resolved.artist;
+    final title = resolved.title;
     if (artist == null || artist.isEmpty || title == null || title.isEmpty) {
-      _logger.i('[lyrics] prefetch SKIPPED (missing artist/title) path=${song.path}');
+      _logger.i(
+        '[lyrics] prefetch SKIPPED (missing artist/title, filename fallback exhausted) '
+        'path=${song.path}',
+      );
       return;
+    }
+    if (resolved.usedFilenameFallback) {
+      _logger.i(
+        '[lyrics] prefetch using filename-parsed artist/title path=${song.path} '
+        'artist="$artist" title="$title"',
+      );
     }
 
     final key = '${artist.toLowerCase()}|${title.toLowerCase()}';
@@ -87,10 +109,14 @@ class LyricsPrefetchService {
         audioFilePath: song.path,
         cancelToken: token,
       );
-      _logger.i('[lyrics] prefetch DONE artist="$artist" title="$title" result=${result.runtimeType}');
+      _logger.i(
+        '[lyrics] prefetch DONE artist="$artist" title="$title" result=${result.runtimeType}',
+      );
     } on DioException catch (e) {
       if (e.type != DioExceptionType.cancel) rethrow;
-      _logger.i('[lyrics] prefetch CANCELLED (song changed mid-fetch) artist="$artist" title="$title"');
+      _logger.i(
+        '[lyrics] prefetch CANCELLED (song changed mid-fetch) artist="$artist" title="$title"',
+      );
     }
   }
 

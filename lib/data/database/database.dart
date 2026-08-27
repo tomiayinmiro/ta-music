@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 8;
+const int kDatabaseVersion = 9;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -22,6 +22,7 @@ final Map<int, _Migration> _migrations = {
   6: _migrationV6,
   7: _migrationV7,
   8: _migrationV8,
+  9: _migrationV9,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -62,8 +63,8 @@ class AppDatabase {
   static Future<Database> get instance => _dbFuture ??= _open();
 
   static Future<Database> _open() async {
-    final path = debugDatabasePath ??
-        p.join((await getApplicationSupportDirectory()).path, 'ta_music.db');
+    final path =
+        debugDatabasePath ?? p.join((await getApplicationSupportDirectory()).path, 'ta_music.db');
     return openDatabase(
       path,
       version: kDatabaseVersion,
@@ -222,8 +223,7 @@ Future<void> _migrationV1(Database db) async {
 Future<void> _migrationV2(Database db) async {
   await db.execute('ALTER TABLE songs ADD COLUMN album_id INTEGER REFERENCES albums (id)');
   await db.execute('ALTER TABLE songs ADD COLUMN artist_id INTEGER REFERENCES artists (id)');
-  await db.execute(
-      'ALTER TABLE songs ADD COLUMN is_missing INTEGER NOT NULL DEFAULT 0');
+  await db.execute('ALTER TABLE songs ADD COLUMN is_missing INTEGER NOT NULL DEFAULT 0');
 
   await db.execute('''
     CREATE TABLE scan_roots (
@@ -325,9 +325,7 @@ Future<void> _migrationV6(Database db) async {
   await db.execute(
     'CREATE INDEX idx_listening_segments_recorded_at ON listening_segments (recorded_at)',
   );
-  await db.execute(
-    'CREATE INDEX idx_listening_segments_song_id ON listening_segments (song_id)',
-  );
+  await db.execute('CREATE INDEX idx_listening_segments_song_id ON listening_segments (song_id)');
 }
 
 /// Phase 5 batch 1 (Lyrics): drops the `lyrics` table Phase 1 created —
@@ -379,6 +377,40 @@ Future<void> _migrationV8(Database db) async {
       has_synced_timing INTEGER NOT NULL DEFAULT 0,
       synced_lyrics_lrc TEXT,
       plain_lyrics TEXT,
+      fetched_at INTEGER NOT NULL,
+      UNIQUE (artist_key, title_key)
+    )
+  ''');
+}
+
+/// Phase 5 batch 1 bug-fix pass: adds `is_possible_mismatch` (set when a
+/// LRCLIB hit came from the query cascade's last-resort, primary-artist-only
+/// variant — see `LyricsRepository`'s `buildLrclibQueryVariants` cascade)
+/// plus `display_artist`/`display_title`, populated only by the new
+/// user-added manual entries (`source = 'user_added'`) for the Settings
+/// "Lyrics" management screen; auto-fetched rows leave both null and the
+/// UI falls back to `artist_key`/`title_key` for those.
+///
+/// Wipes existing rows rather than migrating them in place, same rationale
+/// as v8: this hasn't shipped beyond the developer's own devices, so
+/// nothing in the v8 cache is real data worth preserving through the shape
+/// change — and v8's cache was itself produced by the very bugs this batch
+/// fixes.
+Future<void> _migrationV9(Database db) async {
+  await db.execute('DROP TABLE IF EXISTS lyrics_cache');
+
+  await db.execute('''
+    CREATE TABLE lyrics_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      artist_key TEXT NOT NULL,
+      title_key TEXT NOT NULL,
+      source TEXT NOT NULL,
+      has_synced_timing INTEGER NOT NULL DEFAULT 0,
+      synced_lyrics_lrc TEXT,
+      plain_lyrics TEXT,
+      is_possible_mismatch INTEGER NOT NULL DEFAULT 0,
+      display_artist TEXT,
+      display_title TEXT,
       fetched_at INTEGER NOT NULL,
       UNIQUE (artist_key, title_key)
     )

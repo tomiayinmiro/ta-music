@@ -89,5 +89,49 @@ void main() {
     test('all-blank input yields an empty list', () {
       expect(splitPlainLyrics('\n\n   \n'), isEmpty);
     });
+
+    test('a normal-length line is left as a single line, untouched', () {
+      final lines = splitPlainLyrics('A perfectly normal lyric line');
+
+      expect(lines, hasLength(1));
+      expect(lines.single.text, 'A perfectly normal lyric line');
+    });
+
+    test('a pasted paragraph that lost its line breaks is wrapped into several bounded lines '
+        '(regression: an unbroken multi-thousand-char line caused an 8.5s render stall / ANR '
+        'on a budget device, 2026-08-24)', () {
+      final word = 'lorem'; // 5 chars + 1 space = 6 chars/word
+      final longLine = List.filled(1000, word).join(' '); // ~6000 chars, one "line"
+
+      final lines = splitPlainLyrics(longLine);
+
+      expect(lines.length, greaterThan(1));
+      for (final line in lines) {
+        expect(line.text.length, lessThanOrEqualTo(200));
+      }
+      // No words were dropped or corrupted by the rewrap.
+      expect(lines.map((l) => l.text).join(' '), longLine);
+    });
+
+    test('a single run with no whitespace at all is hard-chunked rather than left unbounded', () {
+      final noSpaces = 'a' * 5000;
+
+      final lines = splitPlainLyrics(noSpaces);
+
+      expect(lines.length, greaterThan(1));
+      for (final line in lines) {
+        expect(line.text.length, lessThanOrEqualTo(200));
+      }
+      expect(lines.map((l) => l.text).join(), noSpaces);
+    });
+
+    test('a line right at the wrap threshold is not split unnecessarily', () {
+      final exactly200 = 'a' * 200;
+
+      final lines = splitPlainLyrics(exactly200);
+
+      expect(lines, hasLength(1));
+      expect(lines.single.text, exactly200);
+    });
   });
 }

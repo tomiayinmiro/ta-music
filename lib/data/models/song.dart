@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../services/lyrics/filename_lyrics_parser.dart';
+
 /// A track in the library, mapped 1:1 to a row in the `songs` table.
 ///
 /// Hand-written immutable class rather than `freezed` — the pinned
@@ -60,17 +62,29 @@ class Song {
   final int? artistId;
   final bool isMissing;
 
-  /// Display title: falls back to the file name (minus extension) when the
-  /// file has no title tag, so nothing in the UI ever shows a blank row.
-  String get displayTitle {
-    if (title != null && title!.trim().isNotEmpty) return title!;
+  /// The ID3 tags run through the same artist/title resolution the lyrics
+  /// lookup uses (see `filename_lyrics_parser.dart`) — a missing OR
+  /// placeholder tag (e.g. a literal "Unknown Artist" baked in by a
+  /// download source) falls back to a value parsed from the filename, so
+  /// [displayTitle]/[displayArtist] never show a raw underscored filename
+  /// or an obviously-fake tag.
+  ResolvedArtistTitle get _resolvedDisplay =>
+      resolveArtistTitleForLyrics(id3Artist: artist, id3Title: title, audioFilePath: path);
+
+  /// Display title: see [_resolvedDisplay]. Falls back to the raw file name
+  /// (minus extension) only in the rare case the filename parser itself
+  /// can't produce anything, so nothing in the UI ever shows a blank row.
+  String get displayTitle => _resolvedDisplay.title ?? _rawFileNameWithoutExtension;
+
+  /// Display artist: see [_resolvedDisplay]. Falls back to "Unknown Artist"
+  /// when neither ID3 nor the filename could recover a real artist.
+  String get displayArtist => _resolvedDisplay.artist ?? 'Unknown Artist';
+
+  String get _rawFileNameWithoutExtension {
     final fileName = path.split(RegExp(r'[\\/]')).last;
     final dotIndex = fileName.lastIndexOf('.');
     return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
   }
-
-  String get displayArtist =>
-      (artist != null && artist!.trim().isNotEmpty) ? artist! : 'Unknown Artist';
 
   Duration get duration => Duration(milliseconds: durationMs ?? 0);
 

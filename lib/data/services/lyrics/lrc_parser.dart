@@ -36,8 +36,9 @@ List<LyricsLine> parseLrc(String text) {
       // A 2-digit fraction is centiseconds (".34" -> 340ms), a 3-digit one
       // is already milliseconds — padding a shorter fraction out to 3
       // digits before parsing handles both with the same arithmetic.
-      final milliseconds =
-          fraction == null ? 0 : int.parse(fraction.padRight(3, '0').substring(0, 3));
+      final milliseconds = fraction == null
+          ? 0
+          : int.parse(fraction.padRight(3, '0').substring(0, 3));
       lines.add(
         LyricsLine(
           text: content,
@@ -53,11 +54,49 @@ List<LyricsLine> parseLrc(String text) {
 /// Plain, unsynced text split into display lines — blank lines dropped, same
 /// rule the original lyrics.ovh-only implementation used (an equal-time slot
 /// per line has nothing to show for a blank one).
+///
+/// A "line" longer than [_maxDisplayLineLength] is re-wrapped into several —
+/// found via a device crash (2026-08-24): a manually-pasted lyric that lost
+/// its real line breaks in the copy/paste became one several-thousand-
+/// character line, and `LyricsPanel`'s `_LyricsLines` renders each line as
+/// an unconstrained `Text` with no `maxLines`. Laying out one unbroken
+/// string that long triggered an 8.5s single-frame stall (an Android ANR)
+/// on a budget device — Skia's line-breaking/shaping cost doesn't stay
+/// linear at that length. No real sung lyric line is anywhere near this
+/// long, so wrapping here is display-only and never fires for normal
+/// (LRCLIB/lyrics.ovh/manually-typed) lyrics.
 List<LyricsLine> splitPlainLyrics(String text) {
   return text
       .split(RegExp(r'\r\n|\n'))
       .map((line) => line.trim())
       .where((line) => line.isNotEmpty)
+      .expand(_wrapLongLine)
       .map((line) => LyricsLine(text: line))
       .toList();
+}
+
+const _maxDisplayLineLength = 200;
+
+Iterable<String> _wrapLongLine(String line) sync* {
+  if (line.length <= _maxDisplayLineLength) {
+    yield line;
+    return;
+  }
+  var current = StringBuffer();
+  for (final word in line.split(RegExp(r'\s+'))) {
+    if (current.isNotEmpty && current.length + word.length + 1 > _maxDisplayLineLength) {
+      yield current.toString();
+      current = StringBuffer();
+    }
+    if (current.isNotEmpty) current.write(' ');
+    current.write(word);
+    // A single "word" with no whitespace at all (e.g. lost line breaks AND
+    // spaces) could itself still exceed the cap — hard-chunk it so nothing
+    // ever reaches the renderer unbounded.
+    while (current.length > _maxDisplayLineLength) {
+      yield current.toString().substring(0, _maxDisplayLineLength);
+      current = StringBuffer(current.toString().substring(_maxDisplayLineLength));
+    }
+  }
+  if (current.isNotEmpty) yield current.toString();
 }

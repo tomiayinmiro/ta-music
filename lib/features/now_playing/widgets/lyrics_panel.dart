@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/motion.dart';
 import '../../../core/theme/spacing.dart';
+import '../../../core/theme/theme_data.dart';
 import '../../../data/models/song.dart';
 import '../../../data/providers/lyrics_providers.dart';
 import '../../../data/providers/playback_providers.dart';
@@ -10,6 +11,7 @@ import '../../../data/repositories/lyrics_repository.dart';
 import '../../../data/services/lyrics/lrc_parser.dart';
 import '../../../data/services/lyrics/lyrics_line_sync.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../screens/manual_lyrics_editor_screen.dart';
 
 /// Replaces the cover-art area on Now Playing when the LYRICS toggle is on
 /// (see `now_playing_screen.dart`) — the transport controls below stay
@@ -42,26 +44,104 @@ class LyricsPanel extends ConsumerWidget {
           onAction: () => ref.invalidate(lyricsForSongProvider(song)),
         ),
         data: (result) => switch (result) {
-          LyricsFound(:final lines, :final isSynced) =>
-            _LyricsLines(lines: lines, isSynced: isSynced),
-          LyricsNotFound() => const EmptyState(
-              icon: Icons.lyrics_outlined,
-              title: 'No lyrics found',
-              message: 'No lyrics found for this song.',
-            ),
-          LyricsMissingMetadata() => const EmptyState(
-              icon: Icons.info_outline_rounded,
-              title: 'Missing song info',
-              message: 'This song is missing artist or title tags, so lyrics can\'t be looked up.',
-            ),
+          LyricsFound(:final lines, :final isSynced, :final isPossibleMismatch) => Column(
+            children: [
+              if (isPossibleMismatch) _VersionMismatchBanner(song: song),
+              Expanded(
+                child: _LyricsLines(lines: lines, isSynced: isSynced),
+              ),
+            ],
+          ),
+          LyricsNotFound() => EmptyState(
+            icon: Icons.lyrics_outlined,
+            title: 'No lyrics found',
+            message: 'No lyrics found for this song.',
+            actionLabel: 'Add lyrics manually',
+            onAction: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song))),
+          ),
+          LyricsMissingMetadata() => EmptyState(
+            icon: Icons.info_outline_rounded,
+            title: 'Missing song info',
+            message: 'This song is missing artist or title tags, so lyrics can\'t be looked up.',
+            actionLabel: 'Add lyrics manually',
+            onAction: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song))),
+          ),
           LyricsFetchError(:final message) => EmptyState(
-              icon: Icons.wifi_off_rounded,
-              title: 'Couldn\'t load lyrics',
-              message: message,
-              actionLabel: 'Retry',
-              onAction: () => ref.invalidate(lyricsForSongProvider(song)),
-            ),
+            icon: Icons.wifi_off_rounded,
+            title: 'Couldn\'t load lyrics',
+            message: message,
+            actionLabel: 'Retry',
+            onAction: () => ref.invalidate(lyricsForSongProvider(song)),
+          ),
         },
+      ),
+    );
+  }
+}
+
+/// Shown above the lyrics when [LyricsFound.isPossibleMismatch] is true —
+/// the LRCLIB hit came from the query cascade's last-resort,
+/// primary-artist-only variant (see `LyricsRepository`'s
+/// `buildLrclibQueryVariants`), so these lyrics may actually belong to a
+/// different feat./ft. version of this title.
+class _VersionMismatchBanner extends StatelessWidget {
+  const _VersionMismatchBanner({required this.song});
+
+  final Song song;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final warning = theme.extension<AppSemanticColors>()?.warning ?? theme.colorScheme.error;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.containerMargin,
+        AppSpacing.stackSm,
+        AppSpacing.containerMargin,
+        0,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.stackSm),
+        decoration: BoxDecoration(
+          color: warning.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: warning.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded, size: 18, color: warning),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Showing lyrics from a different version — these may not match exactly.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  InkWell(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song)),
+                    ),
+                    child: Text(
+                      'Add correct lyrics manually',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: warning,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -140,9 +220,7 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
 
             return ListView.builder(
               controller: _scrollController,
-              padding: EdgeInsets.symmetric(
-                vertical: constraints.maxHeight / 2 - _itemExtent / 2,
-              ),
+              padding: EdgeInsets.symmetric(vertical: constraints.maxHeight / 2 - _itemExtent / 2),
               itemCount: widget.lines.length,
               itemExtent: _itemExtent,
               itemBuilder: (context, index) {
@@ -160,9 +238,7 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
                   ),
                   child: Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.containerMargin,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
                       child: Text(
                         line.text,
                         textAlign: TextAlign.center,

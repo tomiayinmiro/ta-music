@@ -191,6 +191,32 @@ void main() {
     );
   });
 
+  test(
+    'a tagless song whose filename parses recovers artist/title and reaches the repository',
+    () async {
+      service = LyricsPrefetchService(repository: repository, debounceDuration: Duration.zero);
+
+      service!.onSongChanged(
+        Song(
+          path: '/Music/Burna_Boy_ft._Ed_Sheeran_-_For_My_Hand_(mp3.pm).mp3',
+          dateAdded: DateTime(2026, 1, 1),
+        ),
+      );
+      await _settle();
+
+      verify(
+        () => repository.getLyrics(
+          artist: 'Burna Boy ft. Ed Sheeran',
+          title: 'For My Hand',
+          album: any(named: 'album'),
+          duration: any(named: 'duration'),
+          audioFilePath: any(named: 'audioFilePath'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
+
   test('onSongChanged(null) cancels anything pending without calling the repository', () async {
     service = LyricsPrefetchService(repository: repository, debounceDuration: Duration.zero);
 

@@ -13,7 +13,7 @@ import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
-import 'lyrics_cache_debug_screen.dart';
+import 'lyrics_screen.dart';
 
 /// Settings — "Manage folders" pulled forward from Phase 7 (approved
 /// 2026-08-18). No dedicated Stitch design exists for a folder-management
@@ -31,8 +31,7 @@ class SettingsScreen extends ConsumerWidget {
     final scanRootsAsync = ref.watch(scanRootsProvider);
     final excludedAsync = ref.watch(excludedFoldersProvider);
     final scanState = ref.watch(libraryScanControllerProvider);
-    final isScanning =
-        scanState != null && !scanState.isDone && scanState.error == null;
+    final isScanning = scanState != null && !scanState.isDone && scanState.error == null;
     final theme = Theme.of(context);
 
     return AppScaffold(
@@ -62,9 +61,7 @@ class SettingsScreen extends ConsumerWidget {
                   ? 'None added — scanning everything by default.'
                   : 'No folders added yet.',
               addLabel: 'Add folder',
-              itemsAsync: scanRootsAsync.whenData(
-                (roots) => roots.map((r) => r.path).toList(),
-              ),
+              itemsAsync: scanRootsAsync.whenData((roots) => roots.map((r) => r.path).toList()),
               onRemove: (path, index) async {
                 final roots = scanRootsAsync.value!;
                 final repo = await ref.read(libraryRepositoryProvider.future);
@@ -81,9 +78,7 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.folder_off_outlined,
               emptyMessage: 'Nothing excluded.',
               addLabel: 'Exclude a folder',
-              itemsAsync: excludedAsync.whenData(
-                (folders) => folders.map((f) => f.path).toList(),
-              ),
+              itemsAsync: excludedAsync.whenData((folders) => folders.map((f) => f.path).toList()),
               onRemove: (path, index) async {
                 final folders = excludedAsync.value!;
                 final repo = await ref.read(libraryRepositoryProvider.future);
@@ -101,9 +96,7 @@ class SettingsScreen extends ConsumerWidget {
           FilledButton.icon(
             onPressed: isScanning
                 ? null
-                : () => ref
-                      .read(libraryScanControllerProvider.notifier)
-                      .startScan(),
+                : () => ref.read(libraryScanControllerProvider.notifier).startScan(),
             icon: isScanning
                 ? const SizedBox(
                     width: 16,
@@ -117,10 +110,7 @@ class SettingsScreen extends ConsumerWidget {
           Text('Playback', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
           GlassContainer(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.stackMd,
-              vertical: 4,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.stackMd, vertical: 4),
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Resume after interruption'),
@@ -136,20 +126,18 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.stackLg),
-          Text('Diagnostics', style: theme.textTheme.titleLarge),
+          Text('Advanced', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
           GlassContainer(
             padding: EdgeInsets.zero,
             child: ListTile(
               leading: const Icon(Icons.lyrics_outlined),
-              title: const Text('Lyrics cache'),
-              subtitle: const Text(
-                'Temporary debug view of the lyrics fallback chain\'s cache — remove before release.',
-              ),
+              title: const Text('Lyrics'),
+              subtitle: const Text('Fallback chain cache stats, plus your manually added lyrics.'),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const LyricsCacheDebugScreen()),
-              ),
+              onTap: () =>
+                  Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: (_) => const LyricsScreen())),
             ),
           ),
         ],
@@ -169,8 +157,7 @@ class SettingsScreen extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) =>
-          _ExcludeSubfolderSheet(parentPath: path, subfolders: subfolders),
+      builder: (context) => _ExcludeSubfolderSheet(parentPath: path, subfolders: subfolders),
     );
   }
 }
@@ -204,9 +191,7 @@ class _FolderSection extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppTypography.overline.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: AppTypography.overline.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: AppSpacing.stackSm),
         itemsAsync.when(
@@ -218,9 +203,7 @@ class _FolderSection extends StatelessWidget {
           data: (paths) {
             if (paths.isEmpty) {
               return Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: AppSpacing.stackSm,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.stackSm),
                 child: Text(emptyMessage, style: theme.textTheme.bodySmall),
               );
             }
@@ -231,11 +214,7 @@ class _FolderSection extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
                       children: [
-                        Icon(
-                          icon,
-                          size: 20,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
                         const SizedBox(width: AppSpacing.stackSm),
                         Expanded(
                           child: Text(
@@ -246,10 +225,7 @@ class _FolderSection extends StatelessWidget {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(
-                            Icons.remove_circle_outline_rounded,
-                            size: 20,
-                          ),
+                          icon: const Icon(Icons.remove_circle_outline_rounded, size: 20),
                           onPressed: () => onRemove(paths[i], i),
                         ),
                       ],
@@ -278,21 +254,16 @@ class _FolderSection extends StatelessWidget {
 /// tree browser — approved 2026-08-18). Each toggle instantly adds/removes
 /// the child from `excluded_folders`; there's no separate save step.
 class _ExcludeSubfolderSheet extends ConsumerStatefulWidget {
-  const _ExcludeSubfolderSheet({
-    required this.parentPath,
-    required this.subfolders,
-  });
+  const _ExcludeSubfolderSheet({required this.parentPath, required this.subfolders});
 
   final String parentPath;
   final List<Directory> subfolders;
 
   @override
-  ConsumerState<_ExcludeSubfolderSheet> createState() =>
-      _ExcludeSubfolderSheetState();
+  ConsumerState<_ExcludeSubfolderSheet> createState() => _ExcludeSubfolderSheetState();
 }
 
-class _ExcludeSubfolderSheetState
-    extends ConsumerState<_ExcludeSubfolderSheet> {
+class _ExcludeSubfolderSheetState extends ConsumerState<_ExcludeSubfolderSheet> {
   final Set<String> _excluded = {};
 
   Future<void> _toggle(String path, bool exclude) async {
@@ -330,9 +301,7 @@ class _ExcludeSubfolderSheetState
             ),
             const SizedBox(height: AppSpacing.stackMd),
             ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.4,
-              ),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
               child: ListView(
                 shrinkWrap: true,
                 children: [
@@ -342,8 +311,7 @@ class _ExcludeSubfolderSheetState
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text(p.basename(folder.path)),
                       value: _excluded.contains(folder.path),
-                      onChanged: (value) =>
-                          _toggle(folder.path, value ?? false),
+                      onChanged: (value) => _toggle(folder.path, value ?? false),
                     ),
                 ],
               ),
@@ -354,9 +322,7 @@ class _ExcludeSubfolderSheetState
               child: FilledButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: FilledButton.styleFrom(
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppRadius.borderRadiusRegular,
-                  ),
+                  shape: const RoundedRectangleBorder(borderRadius: AppRadius.borderRadiusRegular),
                 ),
                 child: const Text('Done'),
               ),

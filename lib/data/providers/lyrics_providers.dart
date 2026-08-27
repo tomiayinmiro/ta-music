@@ -29,8 +29,17 @@ final lyricsForSongProvider = FutureProvider.family.autoDispose<LyricsResult, So
   );
 });
 
-/// Debug stats for the "Lyrics cache" Settings screen.
+/// Stats for the Settings "Lyrics" screen.
 final lyricsCacheStatsProvider = FutureProvider.autoDispose<LyricsCacheStats>((ref) async {
   final dao = await ref.watch(lyricsCacheDaoProvider.future);
   return dao.stats();
+});
+
+/// The user's manually-added lyrics entries, for the Settings "Lyrics"
+/// screen's management list.
+final manualLyricsEntriesProvider = FutureProvider.autoDispose<List<ManualLyricsEntry>>((
+  ref,
+) async {
+  final repo = await ref.watch(lyricsRepositoryProvider.future);
+  return repo.getManualLyricsEntries();
 });

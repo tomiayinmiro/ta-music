@@ -16,6 +16,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Real network access (Phase 5 batch 1): LRCLIB, lyrics.ovh, and local
+         `.lrc`-fallback lyrics fetching all need this. Missing until
+         2026-08-24 — every prior test ran a debug or profile build, which
+         both carry their own INTERNET permission (see
+         android/app/src/debug/AndroidManifest.xml) purely for the Dart VM
+         Service connection, masking that `main` never declared it for real
+         app use. The first release build surfaced it as every lyrics fetch
+         failing with a connection error. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="ta_music"
         android:name="${applicationName}"
