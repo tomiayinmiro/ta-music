@@ -26,6 +26,18 @@ Each item includes: what it is, why deferred, current workaround (if any), rough
 - **Current workaround**: N/A — English only for now.
 - **Scope**: Medium. Framework setup + string extraction + one translation. Land in Phase 6 or 7 after UI stabilizes.
 
+### RTL (right-to-left) language support in lyrics translation
+- **What**: Detect when a translation target language uses RTL script (Arabic, Hebrew, Persian, Urdu, etc.) and wrap the translated Text widget in a Directionality widget with textDirection: TextDirection.rtl. Also set textAlign appropriately.
+- **Why deferred**: Center-alignment currently masks most visible issues for RTL. Nigerian-focused v1 user base is very unlikely to translate to RTL languages. Polish work not blocking v1 release.
+- **Current workaround**: RTL characters render correctly (BiDi algorithm handles character shaping); minor polish issues in punctuation placement and multi-line wrapping.
+- **Scope**: Small. ~half session of work.
+
+### Bundled font fallback for non-Latin scripts on Windows
+- **What**: Bundle Noto Sans (or similar broad-coverage font) as a fallback for translations that use scripts not covered by system fonts. Especially matters for Sinhala, Khmer, Lao, Tibetan, Mongolian, and other less-common scripts on Windows installations without optional language packs.
+- **Why deferred**: Most common script languages (CJK, Cyrillic, Arabic, Latin, Devanagari) work via system-font fallback on both Android and modern Windows. Only rare scripts on stripped-down Windows installs may show tofu boxes. Font bundling adds significant app size.
+- **Current workaround**: Users select from ~110 languages; a small subset may not render on some Windows installs. No error, just visible tofu boxes.
+- **Scope**: Medium. Font selection, licensing check, bundling, fallback configuration.
+
 ## v1.5 Features (post-v1 release)
 
 Surveyed in the Stitch designs but explicitly held for v1.5 release after v1 ships.
