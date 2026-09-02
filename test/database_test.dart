@@ -19,6 +19,7 @@ const _expectedTables = {
   'playback_state',
   'aura_state',
   'listening_segments',
+  'translations_cache',
 };
 
 void main() {

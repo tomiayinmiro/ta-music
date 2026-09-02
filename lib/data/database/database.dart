@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 11;
+const int kDatabaseVersion = 13;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -25,6 +25,8 @@ final Map<int, _Migration> _migrations = {
   9: _migrationV9,
   10: _migrationV10,
   11: _migrationV11,
+  12: _migrationV12,
+  13: _migrationV13,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -451,4 +453,48 @@ Future<void> _migrationV10(Database db) async {
 /// by plain `test()` blocks with no Flutter binding initialized).
 Future<void> _migrationV11(Database db) async {
   await db.execute('UPDATE albums SET cover_art_path = NULL');
+}
+
+/// Phase 5 batch 2 (Lyrics translation): on-demand per-line translation via
+/// MyMemory. Keyed on (source_text, target_lang) rather than song — the
+/// same line (a repeated chorus, or lyrics shared across two songs) only
+/// ever needs translating once per target language, and re-keying per song
+/// would lose that reuse for no benefit. No TTL: unlike `lyrics_cache`, a
+/// successful translation never goes stale, so every row here behaves like
+/// `lyrics_cache`'s indefinite-cache hit path and none of its 7-day
+/// not-found-retry logic applies.
+Future<void> _migrationV12(Database db) async {
+  await db.execute('''
+    CREATE TABLE translations_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_text TEXT NOT NULL,
+      source_lang TEXT,
+      target_lang TEXT NOT NULL,
+      translated_text TEXT NOT NULL,
+      translated_at INTEGER NOT NULL,
+      UNIQUE (source_text, target_lang)
+    )
+  ''');
+}
+
+/// Phase 5 batch 2 UX fix: adds `is_same_language`, set when a line's
+/// MyMemory response (normalized: trimmed, lowercased) matched the source
+/// text verbatim — meaning the line was already in the target language (a
+/// mixed-language song, or the target happens to be the song's own
+/// language). Determined by comparing response content, not by trusting
+/// MyMemory's `autodetect` guess, which misclassified some of the very
+/// lines used to find this bug. `TranslationClient` also now treats
+/// MyMemory's "PLEASE SELECT TWO DISTINCT LANGUAGES" error the same way
+/// (echoing the source text back) instead of letting that raw error string
+/// reach the UI disguised as a translation — see `TranslationRepository`.
+///
+/// Wipes existing rows rather than migrating them in place: any row cached
+/// during local dev/testing before this fix may hold that literal error
+/// string as its `translated_text`, which is exactly the bad data this fix
+/// exists to stop showing — nothing in the pre-fix cache is worth keeping.
+Future<void> _migrationV13(Database db) async {
+  await db.execute('DELETE FROM translations_cache');
+  await db.execute(
+    'ALTER TABLE translations_cache ADD COLUMN is_same_language INTEGER NOT NULL DEFAULT 0',
+  );
 }

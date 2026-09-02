@@ -17,4 +17,20 @@ class SettingsRepository {
 
   Future<void> setResumeAfterInterruption(bool value) =>
       _dao.set(_resumeAfterInterruptionKey, value.toString());
+
+  static const _translationTargetLanguageKey = 'translation_target_language';
+
+  /// The user's chosen lyrics-translation target language, an ISO 639-1 code
+  /// (e.g. `'yo'`) — null until they pick one in Settings > Lyrics. Stored
+  /// as an empty string internally (the underlying `settings` DAO only
+  /// stores non-null strings) and normalized back to null here, so "no
+  /// language chosen" and "language explicitly cleared back to None" are
+  /// the same state. Phase 5 batch 2.
+  Stream<String?> watchTranslationTargetLanguage() => watchQuery({'settings'}, () async {
+    final value = await _dao.get(_translationTargetLanguageKey);
+    return (value == null || value.isEmpty) ? null : value;
+  });
+
+  Future<void> setTranslationTargetLanguage(String? code) =>
+      _dao.set(_translationTargetLanguageKey, code ?? '');
 }

@@ -14,6 +14,7 @@ import '../database/daos/playback_state_dao.dart';
 import '../database/daos/scan_root_dao.dart';
 import '../database/daos/settings_dao.dart';
 import '../database/daos/song_dao.dart';
+import '../database/daos/translations_cache_dao.dart';
 import '../database/database.dart';
 
 // Hand-written providers rather than `@riverpod` codegen — see
@@ -72,4 +73,8 @@ final listeningSegmentDaoProvider = FutureProvider<ListeningSegmentDao>((ref) as
 
 final lyricsCacheDaoProvider = FutureProvider<LyricsCacheDao>((ref) async {
   return LyricsCacheDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final translationsCacheDaoProvider = FutureProvider<TranslationsCacheDao>((ref) async {
+  return TranslationsCacheDao(await ref.watch(appDatabaseProvider.future));
 });

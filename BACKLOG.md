@@ -38,6 +38,12 @@ Each item includes: what it is, why deferred, current workaround (if any), rough
 - **Current workaround**: Users select from ~110 languages; a small subset may not render on some Windows installs. No error, just visible tofu boxes.
 - **Scope**: Medium. Font selection, licensing check, bundling, fallback configuration.
 
+### Manual translation entry in lyrics editor
+- **What**: Extend the manual lyrics editor so users can optionally enter their own translations for one or more target languages, per line or full-lyrics. Manual translations always override auto-translation for that line + target language.
+- **Why deferred**: Auto-translation quality is generally acceptable for common use. Manual translation entry adds UI complexity (partial translations mixing with auto, showing origin of each translation, deletion/editing) that's not justified for v1 pain level. Most users tolerate imperfect translations more than they tolerate manually fixing them.
+- **Current workaround**: Users just accept imperfect translations, or turn translation off if it's more distracting than helpful.
+- **Scope**: Medium. New UI fields, storage schema addition, precedence logic (manual > auto). ~1-2 sessions.
+
 ## v1.5 Features (post-v1 release)
 
 Surveyed in the Stitch designs but explicitly held for v1.5 release after v1 ships.

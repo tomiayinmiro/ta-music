@@ -10,11 +10,15 @@ import '../../../core/theme/theme_data.dart';
 import '../../../data/models/song.dart';
 import '../../../data/providers/lyrics_providers.dart';
 import '../../../data/providers/playback_providers.dart';
+import '../../../data/providers/repository_providers.dart';
+import '../../../data/providers/translation_providers.dart';
 import '../../../data/repositories/lyrics_repository.dart';
 import '../../../data/services/lyrics/lrc_parser.dart';
 import '../../../data/services/lyrics/lyrics_line_sync.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../screens/manual_lyrics_editor_screen.dart';
+import 'lyrics_translation_controller.dart';
+import 'lyrics_translation_widgets.dart';
 
 /// Replaces the cover-art area on Now Playing when the LYRICS toggle is on
 /// (see `now_playing_screen.dart`) — the transport controls below stay
@@ -246,6 +250,44 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
 
   Timer? _resumeTimer;
 
+  /// Session-scoped, not persisted — matches `now_playing_screen.dart`'s
+  /// `_showLyrics` toggle (plain local state, no Riverpod provider). Nothing
+  /// outside this screen needs to observe it, and since this `State` object
+  /// survives a song change (see the class doc — Flutter reuses it because
+  /// `_LyricsLines` has no key), it naturally stays on/off across songs
+  /// within one Now Playing session and resets on the next app launch, per
+  /// CLAUDE.md Phase 5 batch 2.
+  ///
+  /// UPDATE: that assumption doesn't actually hold — see
+  /// `translationEnabledProvider`'s doc for why the on/off flag itself had
+  /// to move to a real provider. This field just mirrors that provider's
+  /// current value every [build] for convenient reads from non-build
+  /// methods ([_onToggleTranslation], [didUpdateWidget]).
+  bool _translationEnabled = false;
+  LyricsTranslationController? _translationController;
+  bool _rateLimitNoticeShown = false;
+
+  /// Guards against [build]'s auto-resume check (below) scheduling more
+  /// than one [_startTranslating] call per `State` lifetime — without it, a
+  /// State recreated while translation is already on would re-schedule a
+  /// duplicate on every rebuild between the first schedule and
+  /// [_startTranslating]'s own `await` actually completing (nothing sets
+  /// [_translationController] non-null until after that `await`, so a
+  /// nullability check alone can't dedupe the way it might look like it
+  /// should).
+  bool _autoStartTriggered = false;
+
+  /// The current Settings-chosen target language, refreshed every [build]
+  /// via `ref.watch` there. Read from this field (never a fresh `ref.read`)
+  /// inside [_onToggleTranslation]/[_startTranslating]: those run from a
+  /// button tap or [didUpdateWidget], neither of which is itself a `watch`
+  /// point, so an unwatched `ref.read` immediately after this provider is
+  /// first created could still see it mid-flight (`AsyncLoading`, `.value ==
+  /// null`) since it resolves through `settingsRepositoryProvider`'s async
+  /// DB open — watching it here in `build` gives it a chance to resolve
+  /// before the toggle is even tappable.
+  String? _currentTargetLang;
+
   @override
   void initState() {
     super.initState();
@@ -259,6 +301,22 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
       _lineKeys = List.generate(widget.lines.length, (_) => GlobalKey());
       _lastAutoIndex = null;
     }
+    final linesChanged = !_sameLyricText(oldWidget.lines, widget.lines);
+    if (linesChanged && _translationEnabled) {
+      // A new song loaded while translation was already on — continue
+      // translating without requiring the user to re-toggle (Tomi's spec:
+      // "Switch to another song → translations continue for new song
+      // without needing to re-toggle").
+      _startTranslating();
+    }
+  }
+
+  bool _sameLyricText(List<LyricsLine> a, List<LyricsLine> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].text != b[i].text) return false;
+    }
+    return true;
   }
 
   @override
@@ -266,6 +324,50 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
     _scrollController.dispose();
     _resumeTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _onToggleTranslation() async {
+    if (_currentTargetLang == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a translation language in Settings > Lyrics first.')),
+      );
+      return;
+    }
+    final notifier = ref.read(translationEnabledProvider.notifier);
+    final newValue = !notifier.state;
+    notifier.state = newValue;
+    _translationEnabled = newValue;
+    // We're handling the (re)start ourselves right below — stops build()'s
+    // own auto-resume check from also firing for this same transition.
+    _autoStartTriggered = true;
+    if (newValue) {
+      await _startTranslating();
+    } else {
+      _translationController?.clear();
+    }
+  }
+
+  Future<void> _startTranslating() async {
+    final targetLang = _currentTargetLang;
+    if (targetLang == null) return;
+    _rateLimitNoticeShown = false;
+    _translationController ??= LyricsTranslationController(
+      repository: await ref.read(translationRepositoryProvider.future),
+      onUpdate: () {
+        if (mounted) setState(() {});
+      },
+    );
+    await _translationController!.load(
+      lines: widget.lines.map((l) => l.text).toList(growable: false),
+      targetLangCode: targetLang,
+    );
+    if (!mounted) return;
+    if (_translationController!.rateLimited && !_rateLimitNoticeShown) {
+      _rateLimitNoticeShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Translation limit reached — try again tomorrow.')),
+      );
+    }
   }
 
   void _followIndex(int index, {required bool animate}) {
@@ -347,6 +449,19 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
     final position = snapshot?.position ?? Duration.zero;
     final duration = snapshot?.duration ?? snapshot?.currentSong?.duration ?? Duration.zero;
     final playbackService = ref.read(playbackServiceProvider);
+    _currentTargetLang = ref.watch(translationTargetLanguageProvider).value;
+    _translationEnabled = ref.watch(translationEnabledProvider);
+    if (_translationEnabled && !_autoStartTriggered) {
+      // Either the very first build with translation already on (a State
+      // freshly created after `LyricsPanel` tore the old one down for its
+      // loading-spinner branch — see `translationEnabledProvider`'s doc),
+      // or this song's own first build ever. Either way, pick up
+      // translating automatically rather than requiring a re-tap.
+      _autoStartTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startTranslating();
+      });
+    }
 
     // TODO(future session): per-song +/-0.5s offset adjustment for LRCLIB
     // timestamps that drift from the actual audio (see the doc comment on
@@ -423,6 +538,9 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
                               key: _lineKeys[i],
                               text: widget.lines[i].text,
                               isHighlighted: i >= highlightRange.start && i <= highlightRange.end,
+                              translationState: _translationEnabled
+                                  ? _translationController?.stateFor(i)
+                                  : null,
                               onTap: () => playbackService.seek(
                                 widget.isSynced
                                     ? widget.lines[i].timestamp!
@@ -440,7 +558,30 @@ class _LyricsLinesState extends ConsumerState<_LyricsLines> {
                 ),
               ),
             ),
-            Positioned(top: 0, right: 0, child: _SyncIndicator(isSynced: widget.isSynced)),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_translationEnabled && _translationController?.detectedSourceLanguage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: SourceLanguageBadge(
+                        code: _translationController!.detectedSourceLanguage!,
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: TranslateToggleButton(
+                      enabled: _translationEnabled,
+                      onTap: _onToggleTranslation,
+                    ),
+                  ),
+                  _SyncIndicator(isSynced: widget.isSynced),
+                ],
+              ),
+            ),
           ],
         );
       },
@@ -454,6 +595,7 @@ class _LyricLineRow extends StatelessWidget {
     required this.text,
     required this.isHighlighted,
     required this.onTap,
+    this.translationState,
   });
 
   final String text;
@@ -467,6 +609,11 @@ class _LyricLineRow extends StatelessWidget {
   final bool isHighlighted;
   final VoidCallback onTap;
 
+  /// Null when translation is off — no translated line rendered at all,
+  /// same as today. Non-null (even mid-load) once the user has toggled
+  /// translation on for this song.
+  final TranslationLineDisplayState? translationState;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -475,21 +622,29 @@ class _LyricLineRow extends StatelessWidget {
       child: Padding(
         // Bug 1 fix: no fixed height here — a lyric long enough to wrap
         // onto multiple visual lines on a narrow screen simply makes this
-        // row taller instead of overflowing a slot sized for one line.
+        // row taller instead of overflowing a slot sized for one line. The
+        // translated line below (Phase 5 batch 2) follows the same rule —
+        // a `Column` that grows with content, never a fixed slot.
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.containerMargin,
           vertical: AppSpacing.stackSm,
         ),
-        child: AnimatedDefaultTextStyle(
-          duration: AppMotion.lyricsGlide,
-          curve: AppMotion.lyricsGlideEasing,
-          textAlign: TextAlign.center,
-          style: isHighlighted
-              ? theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)
-              : theme.textTheme.bodyLarge!.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                ),
-          child: Text(text),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedDefaultTextStyle(
+              duration: AppMotion.lyricsGlide,
+              curve: AppMotion.lyricsGlideEasing,
+              textAlign: TextAlign.center,
+              style: isHighlighted
+                  ? theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)
+                  : theme.textTheme.bodyLarge!.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+              child: Text(text),
+            ),
+            if (translationState != null) TranslationLineText(state: translationState!),
+          ],
         ),
       ),
     );
