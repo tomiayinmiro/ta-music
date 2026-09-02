@@ -60,6 +60,7 @@ dependencies:
   logger: ^2.7.0
   audio_service_win: ^0.0.3
   path: ^1.9.1
+  image: ^4.9.2
 
 dev_dependencies:
   flutter_test:

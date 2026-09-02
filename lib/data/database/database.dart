@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 10;
+const int kDatabaseVersion = 11;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -24,6 +24,7 @@ final Map<int, _Migration> _migrations = {
   8: _migrationV8,
   9: _migrationV9,
   10: _migrationV10,
+  11: _migrationV11,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -426,4 +427,28 @@ Future<void> _migrationV9(Database db) async {
 /// case), so nothing in it is trustworthy data worth preserving.
 Future<void> _migrationV10(Database db) async {
   await db.execute('DELETE FROM lyrics_cache');
+}
+
+/// Cover-art memory investigation (2026-09-01, see CLAUDE.md): every cover
+/// under `covers/{album_id}.jpg` was written at the source's raw, unbounded
+/// resolution (embedded ID3 picture or a `cover.jpg`/`folder.jpg` sitting
+/// next to the file) — often several thousand pixels per side. That same
+/// unbounded file is handed straight to `MediaItem.artUri` for the Android
+/// media notification/lock screen, decoded there into a native Bitmap
+/// outside Flutter's own image cache entirely; a device capture measured
+/// this driving native heap usage to 190-350MB during ordinary playback.
+/// `library_scanner.dart`'s `_ensureCoverArt` now bounds every cover to
+/// 1024px on its longest side before writing (`resizeCoverArt`), but that
+/// only takes effect for a cover it actually (re)generates — its early-return
+/// check is keyed off `albums.cover_art_path` already being set, so an
+/// existing oversized file would otherwise never get revisited. Clearing the
+/// column forces every cover to regenerate on the next library scan;
+/// `_ensureCoverArt` writes each one to the same `covers/{album_id}.jpg`
+/// path every time, and `File.writeAsBytes` overwrites in place by default,
+/// so the stale oversized file is replaced without needing to delete
+/// anything on disk here — which also keeps this migration free of any
+/// path_provider/platform-channel dependency (a DB-only migration exercised
+/// by plain `test()` blocks with no Flutter binding initialized).
+Future<void> _migrationV11(Database db) async {
+  await db.execute('UPDATE albums SET cover_art_path = NULL');
 }

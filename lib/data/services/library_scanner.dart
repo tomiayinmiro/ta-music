@@ -4,6 +4,8 @@ import 'dart:isolate';
 
 import 'package:audiotags/audiotags.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+import 'package:logger/logger.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactory, databaseFactoryFfi;
@@ -15,7 +17,17 @@ import '../database/daos/song_dao.dart';
 import '../database/database.dart';
 import '../models/album.dart';
 import '../models/song.dart';
+import 'cover_art_resizer.dart';
 import 'media_store_scanner.dart';
+
+final _logger = Logger();
+
+// TODO(cover-art-resize-audit): temporary instrumentation added 2026-09-01
+// to verify the new cover-art resize step from adb logcat — logs original
+// vs. resized dimensions/file size for the first few covers processed per
+// scan, then goes quiet. Remove once confirmed on-device. See CLAUDE.md.
+int _coverArtResizeLogCount = 0;
+const _kCoverArtResizeLogLimit = 5;
 
 /// Audio file extensions the scanner considers, matched case-insensitively.
 const kSupportedAudioExtensions = {
@@ -357,7 +369,8 @@ Future<String?> _ensureCoverArt({
   final destPath = p.join(coversDir.path, '$albumId.jpg');
 
   if (embeddedPictureBytes != null && embeddedPictureBytes.isNotEmpty) {
-    await File(destPath).writeAsBytes(embeddedPictureBytes, flush: true);
+    final resized = _resizeAndLog(embeddedPictureBytes, albumId: albumId, sourceLabel: 'embedded');
+    await File(destPath).writeAsBytes(resized, flush: true);
     return destPath;
   }
 
@@ -365,12 +378,34 @@ Future<String?> _ensureCoverArt({
   for (final name in const ['cover.jpg', 'Cover.jpg', 'folder.jpg', 'Folder.jpg']) {
     final candidate = File(p.join(sourceDir, name));
     if (await candidate.exists()) {
-      await candidate.copy(destPath);
+      final resized = _resizeAndLog(
+        await candidate.readAsBytes(),
+        albumId: albumId,
+        sourceLabel: name,
+      );
+      await File(destPath).writeAsBytes(resized, flush: true);
       return destPath;
     }
   }
 
   return null;
+}
+
+// TODO(cover-art-resize-audit): remove alongside the log-count fields above
+// once the resize is confirmed working on-device.
+Uint8List _resizeAndLog(List<int> sourceBytes, {required int albumId, required String sourceLabel}) {
+  final resized = resizeCoverArt(sourceBytes);
+  if (_coverArtResizeLogCount < _kCoverArtResizeLogLimit) {
+    _coverArtResizeLogCount++;
+    final before = img.decodeImage(Uint8List.fromList(sourceBytes));
+    final after = img.decodeImage(resized);
+    _logger.i(
+      '[cover_art] album=$albumId source=$sourceLabel '
+      'originalDimensions=${before?.width}x${before?.height} originalBytes=${sourceBytes.length} '
+      'resizedDimensions=${after?.width}x${after?.height} resizedBytes=${resized.length}',
+    );
+  }
+  return resized;
 }
 
 bool _isInVoiceMemoFolder(String path) {
