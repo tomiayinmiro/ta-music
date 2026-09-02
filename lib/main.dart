@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +32,26 @@ final _log = Logger();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   initializeDatabaseFactory();
+
+  // TODO(manual-lyrics-crash-audit): temporary instrumentation added
+  // 2026-09-01 to chase a reproducible hang/crash entering the manual
+  // lyrics editor for a specific song — see CLAUDE.md. Catches uncaught
+  // framework errors (build/layout/paint) and platform/async errors that
+  // a local try/catch in the editor flow wouldn't see. Remove once
+  // root-caused.
+  final previousOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    _log.e(
+      '[manual_lyrics] FlutterError.onError',
+      error: details.exception,
+      stackTrace: details.stack,
+    );
+    previousOnError?.call(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    _log.e('[manual_lyrics] PlatformDispatcher.onError (uncaught async error)', error: error, stackTrace: stack);
+    return false;
+  };
 
   // The AudioHandler is created here, before runApp, per audio_service's
   // documented pattern — it needs its own repository instances since

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 
 import '../../../core/theme/spacing.dart';
 import '../../../data/models/song.dart';
@@ -25,6 +26,12 @@ class ManualLyricsEditorScreen extends ConsumerStatefulWidget {
   ConsumerState<ManualLyricsEditorScreen> createState() => _ManualLyricsEditorScreenState();
 }
 
+// TODO(manual-lyrics-crash-audit): temporary instrumentation added
+// 2026-09-01 to chase a reproducible hang/crash entering this screen and
+// saving manual lyrics for a specific song — see CLAUDE.md. Remove once
+// root-caused.
+final _log = Logger();
+
 class _ManualLyricsEditorScreenState extends ConsumerState<ManualLyricsEditorScreen> {
   late final TextEditingController _artistController;
   late final TextEditingController _titleController;
@@ -35,20 +42,74 @@ class _ManualLyricsEditorScreenState extends ConsumerState<ManualLyricsEditorScr
   String? _lyricsError;
   bool _saving = false;
 
+  // TODO(manual-lyrics-crash-audit): tracks which char-count thresholds have
+  // already been logged for the lyrics field, so a long paste/typing session
+  // logs each threshold once rather than on every subsequent keystroke.
+  final Set<int> _loggedLengthThresholds = {};
+  int _lastLyricsLength = 0;
+
   @override
   void initState() {
     super.initState();
-    final resolved = resolveArtistTitleForLyrics(
-      id3Artist: widget.song.artist,
-      id3Title: widget.song.title,
-      audioFilePath: widget.song.path,
+    _log.i(
+      '[manual_lyrics] editor OPENED artist="${widget.song.artist}" '
+      'title="${widget.song.title}" path="${widget.song.path}" '
+      'durationMs=${widget.song.durationMs} format=${widget.song.format}',
+    );
+    late final ResolvedArtistTitle resolved;
+    try {
+      resolved = resolveArtistTitleForLyrics(
+        id3Artist: widget.song.artist,
+        id3Title: widget.song.title,
+        audioFilePath: widget.song.path,
+      );
+    } catch (e, st) {
+      _log.e('[manual_lyrics] resolveArtistTitleForLyrics THREW in initState', error: e, stackTrace: st);
+      rethrow;
+    }
+    _log.i(
+      '[manual_lyrics] resolved artist="${resolved.artist}" title="${resolved.title}" '
+      'usedFilenameFallback=${resolved.usedFilenameFallback} '
+      'filenameAmbiguous=${resolved.filenameAmbiguous}',
     );
     _artistController = TextEditingController(text: resolved.artist ?? widget.song.displayArtist);
     _titleController = TextEditingController(text: resolved.title ?? widget.song.displayTitle);
+    _lyricsController.addListener(_onLyricsChanged);
+  }
+
+  void _onLyricsChanged() {
+    final text = _lyricsController.text;
+    final length = text.length;
+    final delta = length - _lastLyricsLength;
+    _lastLyricsLength = length;
+
+    // TODO(manual-lyrics-crash-audit): a jump of 50+ chars in one change
+    // callback isn't achievable by single-key typing — treat it as a
+    // paste/autofill/dictation-style bulk insert rather than trying to hook
+    // the platform paste action directly (fragile across the OS context
+    // menu, Ctrl+V, and long-press "Paste" affordances).
+    if (delta >= 50) {
+      final longestLine = text.isEmpty
+          ? 0
+          : text.split(RegExp(r'\r\n|\n')).map((l) => l.length).reduce((a, b) => a > b ? a : b);
+      _log.i(
+        '[manual_lyrics] PASTE-LIKE bulk insert into lyrics field: +$delta chars '
+        '(total=$length, longestLine=$longestLine chars, lineBreaks=${'\n'.allMatches(text).length})',
+      );
+    } else if (delta != 0) {
+      _log.i('[manual_lyrics] user typing in lyrics field (total=$length chars)');
+    }
+
+    for (final threshold in const [1000, 5000, 10000]) {
+      if (length >= threshold && _loggedLengthThresholds.add(threshold)) {
+        _log.i('[manual_lyrics] lyrics field crossed $threshold chars (total=$length)');
+      }
+    }
   }
 
   @override
   void dispose() {
+    _lyricsController.removeListener(_onLyricsChanged);
     _artistController.dispose();
     _titleController.dispose();
     _lyricsController.dispose();
@@ -59,26 +120,44 @@ class _ManualLyricsEditorScreenState extends ConsumerState<ManualLyricsEditorScr
     final artist = _artistController.text.trim();
     final title = _titleController.text.trim();
     final lyrics = _lyricsController.text.trim();
+    // TODO(manual-lyrics-crash-audit): remove once root-caused.
+    _log.i(
+      '[manual_lyrics] SAVE tapped artistLen=${artist.length} titleLen=${title.length} '
+      'lyricsLen=${lyrics.length}',
+    );
     setState(() {
       _artistError = artist.isEmpty ? 'Artist is required.' : null;
       _titleError = title.isEmpty ? 'Title is required.' : null;
       _lyricsError = lyrics.isEmpty ? 'Paste the lyrics before saving.' : null;
     });
-    if (_artistError != null || _titleError != null || _lyricsError != null) return;
+    if (_artistError != null || _titleError != null || _lyricsError != null) {
+      _log.i(
+        '[manual_lyrics] SAVE blocked by validation '
+        'artistError=$_artistError titleError=$_titleError lyricsError=$_lyricsError',
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
       final repo = await ref.read(lyricsRepositoryProvider.future);
+      _log.i('[manual_lyrics] calling LyricsRepository.saveManualLyrics');
       await repo.saveManualLyrics(
         song: widget.song,
         displayArtist: artist,
         displayTitle: title,
         lyrics: lyrics,
       );
+      _log.i('[manual_lyrics] saveManualLyrics RETURNED — invalidating providers');
       ref.invalidate(lyricsForSongProvider(widget.song));
       ref.invalidate(manualLyricsEntriesProvider);
       ref.invalidate(lyricsCacheStatsProvider);
+      _log.i('[manual_lyrics] SAVE complete — popping screen');
       if (mounted) Navigator.of(context).pop();
+    } catch (e, st) {
+      // TODO(manual-lyrics-crash-audit): remove once root-caused.
+      _log.e('[manual_lyrics] SAVE THREW', error: e, stackTrace: st);
+      rethrow;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -122,11 +201,15 @@ class _ManualLyricsEditorScreenState extends ConsumerState<ManualLyricsEditorScr
           TextField(
             controller: _artistController,
             decoration: InputDecoration(labelText: 'Artist', errorText: _artistError),
+            // TODO(manual-lyrics-crash-audit): remove once root-caused.
+            onChanged: (_) => _log.i('[manual_lyrics] user typing in artist field'),
           ),
           const SizedBox(height: AppSpacing.stackMd),
           TextField(
             controller: _titleController,
             decoration: InputDecoration(labelText: 'Title', errorText: _titleError),
+            // TODO(manual-lyrics-crash-audit): remove once root-caused.
+            onChanged: (_) => _log.i('[manual_lyrics] user typing in title field'),
           ),
           const SizedBox(height: AppSpacing.stackMd),
           TextField(

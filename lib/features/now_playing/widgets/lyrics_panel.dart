@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 
 import '../../../core/theme/motion.dart';
 import '../../../core/theme/spacing.dart';
@@ -24,6 +25,11 @@ import '../screens/manual_lyrics_editor_screen.dart';
 /// "normal" pushed screen or another `NowPlayingScreen`-style exception.
 /// Renders instantly with a loading spinner rather than waiting on the
 /// fetch, per Phase 5 batch 1's "must open fast" rule.
+// TODO(manual-lyrics-crash-audit): temporary instrumentation added
+// 2026-09-01 to chase a reproducible hang/crash entering the manual lyrics
+// editor for a specific song — see CLAUDE.md. Remove once root-caused.
+final _log = Logger();
+
 class LyricsPanel extends ConsumerWidget {
   const LyricsPanel({super.key, required this.song, required this.height});
 
@@ -59,18 +65,34 @@ class LyricsPanel extends ConsumerWidget {
             title: 'No lyrics found',
             message: 'No lyrics found for this song.',
             actionLabel: 'Add lyrics manually',
-            onAction: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song))),
+            onAction: () {
+              // TODO(manual-lyrics-crash-audit): remove once root-caused.
+              _log.i(
+                '[manual_lyrics] "Add lyrics manually" tapped (not-found empty state) '
+                'artist="${song.artist}" title="${song.title}" path="${song.path}" '
+                'durationMs=${song.durationMs}',
+              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song)));
+            },
           ),
           LyricsMissingMetadata() => EmptyState(
             icon: Icons.info_outline_rounded,
             title: 'Missing song info',
             message: 'This song is missing artist or title tags, so lyrics can\'t be looked up.',
             actionLabel: 'Add lyrics manually',
-            onAction: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song))),
+            onAction: () {
+              // TODO(manual-lyrics-crash-audit): remove once root-caused.
+              _log.i(
+                '[manual_lyrics] "Add lyrics manually" tapped (missing-metadata empty state) '
+                'artist="${song.artist}" title="${song.title}" path="${song.path}" '
+                'durationMs=${song.durationMs}',
+              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song)));
+            },
           ),
           LyricsFetchError(:final message) => EmptyState(
             icon: Icons.wifi_off_rounded,
@@ -127,9 +149,17 @@ class _VersionMismatchBanner extends StatelessWidget {
                     style: theme.textTheme.bodySmall,
                   ),
                   InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song)),
-                    ),
+                    onTap: () {
+                      // TODO(manual-lyrics-crash-audit): remove once root-caused.
+                      _log.i(
+                        '[manual_lyrics] "Add correct lyrics manually" tapped (mismatch banner) '
+                        'artist="${song.artist}" title="${song.title}" path="${song.path}" '
+                        'durationMs=${song.durationMs}',
+                      );
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => ManualLyricsEditorScreen(song: song)),
+                      );
+                    },
                     child: Text(
                       'Add correct lyrics manually',
                       style: theme.textTheme.bodySmall?.copyWith(
