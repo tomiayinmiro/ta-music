@@ -276,13 +276,29 @@ void _scanEntryPoint(_ScanRequest request) async {
       String? coverArtPath;
       if (albumName != null) {
         albumId = await albumDao.upsert(Album(name: albumName, artist: artistName, year: tag?.year));
-        coverArtPath = await _ensureCoverArt(
-          albumId: albumId,
-          albumDao: albumDao,
-          coversDir: coversDir,
-          sourceFilePath: path,
-          embeddedPictureBytes: tag != null && tag.pictures.isNotEmpty ? tag.pictures.first.bytes : null,
-        );
+        // Windows regression investigation (2026-09-04): a single album's
+        // cover write failing (observed: PathAccessException/"Access is
+        // denied" writing covers/{id}.jpg — the running app's own CoverArt
+        // widget can hold a transient read handle on that exact file while
+        // this isolate tries to overwrite it) used to propagate all the way
+        // out to the scan's top-level catch, aborting the ENTIRE scan and
+        // leaving every other album's cover unresolved too. Cover art is
+        // best-effort per song now: a failure here just leaves this song's
+        // album without art for this pass (retried automatically next scan,
+        // same as "no art found") instead of failing the whole library scan.
+        try {
+          coverArtPath = await _ensureCoverArt(
+            albumId: albumId,
+            albumDao: albumDao,
+            coversDir: coversDir,
+            sourceFilePath: path,
+            embeddedPictureBytes:
+                tag != null && tag.pictures.isNotEmpty ? tag.pictures.first.bytes : null,
+          );
+        } catch (e) {
+          _logger.w('[cover_art] failed for album=$albumId path=$path: $e');
+          coverArtPath = null;
+        }
       }
 
       final song = Song(
@@ -370,7 +386,7 @@ Future<String?> _ensureCoverArt({
 
   if (embeddedPictureBytes != null && embeddedPictureBytes.isNotEmpty) {
     final resized = _resizeAndLog(embeddedPictureBytes, albumId: albumId, sourceLabel: 'embedded');
-    await File(destPath).writeAsBytes(resized, flush: true);
+    await _writeCoverArtWithRetry(destPath, resized);
     return destPath;
   }
 
@@ -383,12 +399,37 @@ Future<String?> _ensureCoverArt({
         albumId: albumId,
         sourceLabel: name,
       );
-      await File(destPath).writeAsBytes(resized, flush: true);
+      await _writeCoverArtWithRetry(destPath, resized);
       return destPath;
     }
   }
 
   return null;
+}
+
+/// Writes [bytes] to [destPath], retrying a couple of times on a transient
+/// Windows file-access error before giving up — Windows regression
+/// investigation (2026-09-04): a `covers/{id}.jpg` write can momentarily
+/// collide with the running app's own `CoverArt` widget holding a read
+/// handle on that exact file (Windows' file locking is stricter about
+/// concurrent access than the platforms this codebase mostly runs on), which
+/// surfaces as `PathAccessException`/"Access is denied" — usually gone a few
+/// hundred milliseconds later once that read completes. The caller still
+/// treats a persistent failure as non-fatal to the rest of the scan (see the
+/// call site's `try`/`catch`); this just avoids needing an entire second
+/// manual rescan for what's typically a one-frame timing collision.
+Future<void> _writeCoverArtWithRetry(String destPath, Uint8List bytes) async {
+  const maxAttempts = 3;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await File(destPath).writeAsBytes(bytes, flush: true);
+      return;
+    } catch (e) {
+      if (attempt == maxAttempts) rethrow;
+      _logger.w('[cover_art] write attempt $attempt failed for $destPath, retrying: $e');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+  }
 }
 
 // TODO(cover-art-resize-audit): remove alongside the log-count fields above

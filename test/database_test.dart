@@ -20,6 +20,7 @@ const _expectedTables = {
   'aura_state',
   'listening_segments',
   'translations_cache',
+  'recommendation_seed_cache',
 };
 
 void main() {

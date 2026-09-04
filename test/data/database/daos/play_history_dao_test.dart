@@ -84,4 +84,133 @@ void main() {
       reason: 'only the recent song falls within the window',
     );
   });
+
+  group('co-occurrence (Phase 6 batch 1 recommendation engine)', () {
+    test('a play within 30 minutes of a seed play counts as co-occurring', () async {
+      final db = await AppDatabase.instance;
+      final songDao = SongDao(db);
+      final playHistoryDao = PlayHistoryDao(db);
+
+      final seed = await insertSong(songDao, 'Seed');
+      final companion = await insertSong(songDao, 'Companion');
+      final seedPlayedAt = DateTime(2026, 9, 1, 12, 0);
+      await playHistoryDao.insert(
+        PlayHistoryEntry(songId: seed, playedAt: seedPlayedAt, completed: true),
+      );
+      await playHistoryDao.insert(
+        PlayHistoryEntry(
+          songId: companion,
+          playedAt: seedPlayedAt.add(const Duration(minutes: 20)),
+          completed: true,
+        ),
+      );
+
+      final counts = await playHistoryDao.coOccurringPlayCounts(
+        excludeSongId: seed,
+        seedTimestamps: [seedPlayedAt.millisecondsSinceEpoch],
+      );
+
+      expect(counts[companion], 1);
+    });
+
+    test('a play outside the 30 minute window does not count', () async {
+      final db = await AppDatabase.instance;
+      final songDao = SongDao(db);
+      final playHistoryDao = PlayHistoryDao(db);
+
+      final seed = await insertSong(songDao, 'Seed');
+      final stranger = await insertSong(songDao, 'Stranger');
+      final seedPlayedAt = DateTime(2026, 9, 1, 12, 0);
+      await playHistoryDao.insert(
+        PlayHistoryEntry(songId: seed, playedAt: seedPlayedAt, completed: true),
+      );
+      await playHistoryDao.insert(
+        PlayHistoryEntry(
+          songId: stranger,
+          playedAt: seedPlayedAt.add(const Duration(hours: 3)),
+          completed: true,
+        ),
+      );
+
+      final counts = await playHistoryDao.coOccurringPlayCounts(
+        excludeSongId: seed,
+        seedTimestamps: [seedPlayedAt.millisecondsSinceEpoch],
+      );
+
+      expect(counts[stranger], isNull);
+    });
+
+    test('overlapping seed-play windows never double-count the same candidate play', () async {
+      final db = await AppDatabase.instance;
+      final songDao = SongDao(db);
+      final playHistoryDao = PlayHistoryDao(db);
+
+      final seed = await insertSong(songDao, 'Seed');
+      final companion = await insertSong(songDao, 'Companion');
+      final firstSeedPlay = DateTime(2026, 9, 1, 12, 0);
+      final secondSeedPlay = firstSeedPlay.add(const Duration(minutes: 10));
+      await playHistoryDao.insert(
+        PlayHistoryEntry(songId: seed, playedAt: firstSeedPlay, completed: true),
+      );
+      await playHistoryDao.insert(
+        PlayHistoryEntry(songId: seed, playedAt: secondSeedPlay, completed: true),
+      );
+      // Falls inside both seed plays' +/-30min windows.
+      await playHistoryDao.insert(
+        PlayHistoryEntry(
+          songId: companion,
+          playedAt: firstSeedPlay.add(const Duration(minutes: 5)),
+          completed: true,
+        ),
+      );
+
+      final counts = await playHistoryDao.coOccurringPlayCounts(
+        excludeSongId: seed,
+        seedTimestamps: [
+          firstSeedPlay.millisecondsSinceEpoch,
+          secondSeedPlay.millisecondsSinceEpoch,
+        ],
+      );
+
+      expect(counts[companion], 1, reason: 'the same play_history row must only count once');
+    });
+
+    test('the seed song is never counted against itself', () async {
+      final db = await AppDatabase.instance;
+      final songDao = SongDao(db);
+      final playHistoryDao = PlayHistoryDao(db);
+
+      final seed = await insertSong(songDao, 'Seed');
+      final seedPlayedAt = DateTime(2026, 9, 1, 12, 0);
+      await playHistoryDao.insert(
+        PlayHistoryEntry(songId: seed, playedAt: seedPlayedAt, completed: true),
+      );
+      await playHistoryDao.insert(
+        PlayHistoryEntry(
+          songId: seed,
+          playedAt: seedPlayedAt.add(const Duration(minutes: 5)),
+          completed: true,
+        ),
+      );
+
+      final counts = await playHistoryDao.coOccurringPlayCounts(
+        excludeSongId: seed,
+        seedTimestamps: [seedPlayedAt.millisecondsSinceEpoch],
+      );
+
+      expect(counts[seed], isNull);
+    });
+
+    test('empty seed timestamps returns no co-occurrence', () async {
+      final db = await AppDatabase.instance;
+      final playHistoryDao = PlayHistoryDao(db);
+
+      final counts = await playHistoryDao.coOccurringPlayCounts(
+        excludeSongId: 1,
+        seedTimestamps: const [],
+      );
+
+      expect(counts, isEmpty);
+    });
+  });
 }

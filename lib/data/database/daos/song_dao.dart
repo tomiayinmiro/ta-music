@@ -139,10 +139,25 @@ class SongDao {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  /// A real, counted play breaks whatever skip streak was building —
+  /// resets `consecutive_skips` in the same statement, see `_migrationV14`.
   Future<void> incrementPlayCount(int songId, DateTime playedAt) async {
     await _db.rawUpdate(
-      'UPDATE songs SET play_count = play_count + 1, last_played_at = ? WHERE id = ?',
+      'UPDATE songs SET play_count = play_count + 1, last_played_at = ?, '
+      'consecutive_skips = 0 WHERE id = ?',
       [playedAt.millisecondsSinceEpoch, songId],
+    );
+    DatabaseChangeNotifier.instance.notify({'songs'});
+  }
+
+  /// Records a detected skip (see `AudioPlayerHandler._maybeRecordSkip`) —
+  /// increments both the lifetime `skip_count` and the current
+  /// `consecutive_skips` streak.
+  Future<void> incrementSkipCount(int songId) async {
+    await _db.rawUpdate(
+      'UPDATE songs SET skip_count = skip_count + 1, consecutive_skips = consecutive_skips + 1 '
+      'WHERE id = ?',
+      [songId],
     );
     DatabaseChangeNotifier.instance.notify({'songs'});
   }

@@ -10,6 +10,7 @@ import '../../../core/theme/spacing.dart';
 import '../../../core/theme/typography.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
+import '../../../data/providers/recommendation_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
@@ -124,6 +125,39 @@ class SettingsScreen extends ConsumerWidget {
                 await repo.setResumeAfterInterruption(value);
               },
             ),
+          ),
+          const SizedBox(height: AppSpacing.stackLg),
+          Text('Recommendations', style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.stackSm),
+          GlassContainer(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.stackMd, vertical: 4),
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enable recommendations'),
+              subtitle: const Text(
+                'Recommendations are computed locally on your device from your listening '
+                'history. No data leaves your phone.',
+              ),
+              value: ref.watch(recommendationsEnabledProvider).value ?? true,
+              onChanged: (value) async {
+                final repo = await ref.read(settingsRepositoryProvider.future);
+                await repo.setRecommendationsEnabled(value);
+              },
+            ),
+          ),
+          const SizedBox(height: AppSpacing.stackSm),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final repo = await ref.read(recommendationRepositoryProvider.future);
+              await repo.clearSeedCache();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Recommendation cache cleared.')),
+                );
+              }
+            },
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: const Text('Clear recommendation cache'),
           ),
           const SizedBox(height: AppSpacing.stackLg),
           Text('Advanced', style: theme.textTheme.titleLarge),

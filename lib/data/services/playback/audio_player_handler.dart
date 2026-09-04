@@ -21,6 +21,7 @@ import 'next_aware_shuffle_order.dart';
 import 'playback_handler.dart';
 import 'playback_models.dart';
 import 'relative_queue_index.dart';
+import 'skip_detection.dart';
 
 /// The single top-level `AudioHandler`, per `audio_service`'s documented
 /// pattern — created once in `main()`, before `runApp`, via
@@ -117,6 +118,11 @@ class AudioPlayerHandler extends BaseAudioHandler
   bool _nearEndReached = false;
   int? _playHistoryId;
   Duration _lastPosition = Duration.zero;
+
+  /// The tracked item's duration, captured once when it becomes tracked —
+  /// see `_maybeRecordSkip`, which needs this for the *outgoing* song after
+  /// `_trackedIndex` may no longer match `_player.currentIndex`/`.duration`.
+  int? _trackedDurationMs;
 
   bool _resumeAfterInterruption = false;
   bool _pausedByInterruption = false;
@@ -450,12 +456,49 @@ class AudioPlayerHandler extends BaseAudioHandler
     _nearEndReached = false;
     _playHistoryId = null;
     _lastPosition = Duration.zero;
+    _trackedDurationMs = (index != null && index >= 0 && index < queueSongs.length)
+        ? queueSongs[index].durationMs
+        : null;
   }
 
-  void _finalizeItemTracking() {
+  /// [isRealTransition] distinguishes actually leaving the tracked item
+  /// (queue moved to a different index, or it played to completion) from
+  /// the same-item rewind-reset below — a manual rewind or repeat-one loop
+  /// restarts *counting* for a fresh listen, but the user hasn't abandoned
+  /// the song, so it must never register as a skip.
+  void _finalizeItemTracking({bool isRealTransition = true}) {
     final id = _playHistoryId;
     if (_nearEndReached && id != null) {
       unawaited(_songRepository.markPlayCompleted(id));
+    }
+    if (isRealTransition) _maybeRecordSkip();
+  }
+
+  /// Records a skip — see `_migrationV14`'s doc for the definition (furthest
+  /// position reached under both 30s and 50% of duration) and why this is a
+  /// denormalized counter on `songs` rather than a `play_history`/event-log
+  /// row. A no-op if the listen was already counted as a real play.
+  void _maybeRecordSkip() {
+    if (_countedThisPlay) return;
+    final index = _trackedIndex;
+    final durationMs = _trackedDurationMs;
+    if (index == null ||
+        index < 0 ||
+        index >= queueSongs.length ||
+        durationMs == null ||
+        durationMs <= 0) {
+      return;
+    }
+    final song = queueSongs[index];
+    if (song.id == null) return;
+
+    final skipped = isSkip(
+      positionMs: _lastPosition.inMilliseconds,
+      durationMs: durationMs,
+      countedThisPlay: _countedThisPlay,
+    );
+    if (skipped) {
+      unawaited(_songRepository.recordSkip(song.id!));
     }
   }
 
@@ -467,9 +510,10 @@ class AudioPlayerHandler extends BaseAudioHandler
     }
 
     // A large backward jump (manual rewind, or a repeat-one loop restarting)
-    // starts a fresh listen for counting purposes — see class doc.
+    // starts a fresh listen for counting purposes — see class doc. Not a
+    // skip: the song is still playing, not being abandoned.
     if (position < _lastPosition - const Duration(seconds: 2)) {
-      _finalizeItemTracking();
+      _finalizeItemTracking(isRealTransition: false);
       _resetItemTracking(index);
     }
     _lastPosition = position;

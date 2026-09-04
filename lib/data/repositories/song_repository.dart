@@ -55,6 +55,11 @@ class SongRepository {
 
   Future<void> markPlayCompleted(int playHistoryId) => _playHistoryDao.markCompleted(playHistoryId);
 
+  /// Records a detected skip — see `AudioPlayerHandler._maybeRecordSkip` and
+  /// `_migrationV14`'s doc for the definition and why this doesn't touch
+  /// `play_history`.
+  Future<void> recordSkip(int songId) => _songDao.incrementSkipCount(songId);
+
   /// Records real, wall-clock-measured listening time — decoupled from
   /// [recordPlay]/`play_count` entirely, see `_migrationV6`'s doc. Called
   /// by `AudioPlayerHandler`'s `ListeningTimeAccumulator` flushes, never

@@ -6,10 +6,12 @@ import '../../core/theme/spacing.dart';
 import '../../data/models/song.dart';
 import '../../data/providers/library_providers.dart';
 import '../../data/providers/playback_providers.dart';
+import '../../data/providers/recommendation_providers.dart';
 import '../../data/providers/repository_providers.dart';
 import '../../features/favorites/screens/favorites_screen.dart';
 import '../../features/library/screens/album_detail_screen.dart';
 import '../../features/library/screens/artist_detail_screen.dart';
+import '../../features/recommendations/screens/more_like_this_screen.dart';
 import 'add_to_playlist_sheet.dart';
 import 'cover_art.dart';
 import 'glass_container.dart';
@@ -222,6 +224,19 @@ class _SongContextMenuState extends ConsumerState<_SongContextMenu> {
                   }
                 },
               ),
+              if (ref.watch(recommendationsEnabledProvider).value ?? true)
+                _ActionTile(
+                  icon: Icons.auto_awesome_outlined,
+                  label: 'More like this',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    if (outer.mounted) {
+                      Navigator.of(outer).push(
+                        MaterialPageRoute(builder: (_) => MoreLikeThisScreen(seed: song)),
+                      );
+                    }
+                  },
+                ),
               _ActionTile(
                 icon: Icons.info_outline_rounded,
                 label: 'Song Info',

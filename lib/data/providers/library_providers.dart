@@ -7,6 +7,7 @@ import '../models/playlist.dart';
 import '../models/scan_root.dart';
 import '../models/song.dart';
 import '../repositories/playlist_repository.dart';
+import '../repositories/reactive_query.dart';
 import '../services/library_scanner.dart';
 import '../services/stats_service.dart';
 import 'repository_providers.dart';
@@ -55,10 +56,25 @@ final allAlbumsProvider = StreamProvider<List<Album>>((ref) async* {
 });
 
 /// A single album by id — used wherever only a `Song.albumId` is on hand
-/// and its cover art is needed (the mini player, Now Playing, the queue).
-final albumByIdProvider = FutureProvider.family<Album?, int>((ref, albumId) async {
+/// and its cover art is needed (song rows/cards throughout the app, the
+/// mini player, Now Playing, the queue).
+///
+/// A reactive `StreamProvider`, not a one-shot `FutureProvider` — cover art
+/// investigation (2026-09-04): this used to be a plain `Future<Album?>`
+/// fetch, cached by Riverpod for the lifetime of the app per `albumId` with
+/// nothing to invalidate it. A widget that watched a given album before its
+/// `covers/{id}.jpg` had actually been (re)generated — e.g. the mini player,
+/// mounted from app start, resolving an album whose cover the background
+/// scanner hadn't reached yet — would keep that cached `null` for the rest
+/// of the session, even after the scan wrote a real `cover_art_path`,
+/// because nothing ever re-ran the fetch. `watchQuery` (the same
+/// reactive-streams-over-sqflite pattern every other DB-backed provider in
+/// this file already uses) re-emits whenever the `albums` table changes, so
+/// a cover art write is picked up live instead of requiring a fresh
+/// `albumId` or an app restart.
+final albumByIdProvider = StreamProvider.family<Album?, int>((ref, albumId) async* {
   final repo = await ref.watch(albumRepositoryProvider.future);
-  return repo.getById(albumId);
+  yield* watchQuery({'albums'}, () => repo.getById(albumId));
 });
 
 final allArtistsProvider = StreamProvider<List<Artist>>((ref) async* {

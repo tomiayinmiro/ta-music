@@ -69,4 +69,54 @@ class PlayHistoryDao {
     ''', [limit]);
     return rows.map((r) => (r['song_id'] as int, r['plays'] as int)).toList();
   }
+
+  /// Every `played_at` timestamp (ms since epoch) recorded for [songId] —
+  /// the recommendation engine's co-occurrence signal windows around each
+  /// of these. Unordered; small in practice (one row per real listen of a
+  /// single song).
+  Future<List<int>> playedAtTimestampsForSong(int songId) async {
+    final rows = await _db.query(
+      'play_history',
+      columns: ['played_at'],
+      where: 'song_id = ?',
+      whereArgs: [songId],
+    );
+    return rows.map((r) => r['played_at'] as int).toList();
+  }
+
+  /// For each timestamp in [seedTimestamps] (ms since epoch), counts other
+  /// songs' `play_history` rows within [windowMs] on either side — "played
+  /// in the same listening session as the seed." Returns candidate song id
+  /// -> distinct co-occurring play count.
+  ///
+  /// Runs one indexed `played_at` range query per seed timestamp (bounded
+  /// by how many times the seed itself has been played, not library size)
+  /// rather than one query per candidate song, so it scales with listening
+  /// history instead of library size. Dedupes by `play_history.id` so two
+  /// overlapping seed-play windows never double-count the same candidate
+  /// play.
+  Future<Map<int, int>> coOccurringPlayCounts({
+    required int excludeSongId,
+    required List<int> seedTimestamps,
+    int windowMs = 30 * 60 * 1000,
+  }) async {
+    if (seedTimestamps.isEmpty) return {};
+
+    final seenRowIds = <int>{};
+    final counts = <int, int>{};
+    for (final t in seedTimestamps) {
+      final rows = await _db.query(
+        'play_history',
+        columns: ['id', 'song_id'],
+        where: 'song_id != ? AND played_at BETWEEN ? AND ?',
+        whereArgs: [excludeSongId, t - windowMs, t + windowMs],
+      );
+      for (final row in rows) {
+        if (!seenRowIds.add(row['id'] as int)) continue;
+        final songId = row['song_id'] as int;
+        counts[songId] = (counts[songId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
 }

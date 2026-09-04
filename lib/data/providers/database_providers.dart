@@ -11,6 +11,7 @@ import '../database/daos/lyrics_cache_dao.dart';
 import '../database/daos/play_history_dao.dart';
 import '../database/daos/playlist_dao.dart';
 import '../database/daos/playback_state_dao.dart';
+import '../database/daos/recommendation_seed_cache_dao.dart';
 import '../database/daos/scan_root_dao.dart';
 import '../database/daos/settings_dao.dart';
 import '../database/daos/song_dao.dart';
@@ -77,4 +78,8 @@ final lyricsCacheDaoProvider = FutureProvider<LyricsCacheDao>((ref) async {
 
 final translationsCacheDaoProvider = FutureProvider<TranslationsCacheDao>((ref) async {
   return TranslationsCacheDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final recommendationSeedCacheDaoProvider = FutureProvider<RecommendationSeedCacheDao>((ref) async {
+  return RecommendationSeedCacheDao(await ref.watch(appDatabaseProvider.future));
 });

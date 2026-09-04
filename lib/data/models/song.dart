@@ -36,6 +36,8 @@ class Song {
     this.albumId,
     this.artistId,
     this.isMissing = false,
+    this.skipCount = 0,
+    this.consecutiveSkips = 0,
   });
 
   final int? id;
@@ -61,6 +63,15 @@ class Song {
   final int? albumId;
   final int? artistId;
   final bool isMissing;
+
+  /// Lifetime count of detected skips (played under 30s and under 50% of
+  /// duration before moving on) — see `_migrationV14`'s doc.
+  final int skipCount;
+
+  /// Streak of skips since the last counted play; reset to 0 whenever a
+  /// real play is recorded. Used by the recommendation engine's hard
+  /// exclusion rule ("skipped 3+ times in a row, no completions").
+  final int consecutiveSkips;
 
   /// The ID3 tags run through the same artist/title resolution the lyrics
   /// lookup uses (see `filename_lyrics_parser.dart`) — a missing OR
@@ -117,6 +128,8 @@ class Song {
       albumId: map['album_id'] as int?,
       artistId: map['artist_id'] as int?,
       isMissing: (map['is_missing'] as int? ?? 0) != 0,
+      skipCount: map['skip_count'] as int? ?? 0,
+      consecutiveSkips: map['consecutive_skips'] as int? ?? 0,
     );
   }
 
@@ -144,6 +157,8 @@ class Song {
       'album_id': albumId,
       'artist_id': artistId,
       'is_missing': isMissing ? 1 : 0,
+      'skip_count': skipCount,
+      'consecutive_skips': consecutiveSkips,
     };
     if (includeId && id != null) map['id'] = id;
     return map;
@@ -173,6 +188,8 @@ class Song {
     int? albumId,
     int? artistId,
     bool? isMissing,
+    int? skipCount,
+    int? consecutiveSkips,
   }) {
     return Song(
       id: id ?? this.id,
@@ -198,6 +215,8 @@ class Song {
       albumId: albumId ?? this.albumId,
       artistId: artistId ?? this.artistId,
       isMissing: isMissing ?? this.isMissing,
+      skipCount: skipCount ?? this.skipCount,
+      consecutiveSkips: consecutiveSkips ?? this.consecutiveSkips,
     );
   }
 
@@ -228,7 +247,9 @@ class Song {
           isExcluded == other.isExcluded &&
           albumId == other.albumId &&
           artistId == other.artistId &&
-          isMissing == other.isMissing;
+          isMissing == other.isMissing &&
+          skipCount == other.skipCount &&
+          consecutiveSkips == other.consecutiveSkips;
 
   @override
   int get hashCode => Object.hash(
@@ -242,7 +263,7 @@ class Song {
         year,
         Object.hash(trackNumber, discNumber, durationMs, fileSize, format, sampleRate, bitRate),
         Object.hash(dateAdded, lastModified, playCount, lastPlayedAt, isExcluded),
-        Object.hash(albumId, artistId, isMissing),
+        Object.hash(albumId, artistId, isMissing, skipCount, consecutiveSkips),
       );
 
   @override

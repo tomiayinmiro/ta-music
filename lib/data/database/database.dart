@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 13;
+const int kDatabaseVersion = 14;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -27,6 +27,7 @@ final Map<int, _Migration> _migrations = {
   11: _migrationV11,
   12: _migrationV12,
   13: _migrationV13,
+  14: _migrationV14,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -497,4 +498,53 @@ Future<void> _migrationV13(Database db) async {
   await db.execute(
     'ALTER TABLE translations_cache ADD COLUMN is_same_language INTEGER NOT NULL DEFAULT 0',
   );
+}
+
+/// Phase 6 batch 1 (Recommendations): local, on-device recommendations need
+/// a way to down-rank/exclude songs the user actively skips — investigation
+/// found `play_history` carries no trace of a skip at all (a row is only
+/// ever inserted at the 50%-played-or-completion mark, Phase 3's rule), and
+/// `listening_segments`' wall-clock chunks don't cleanly map to one listen
+/// (periodic 30s flushes + pause/resume can split a single listen across
+/// several rows), so neither table can answer "was this listen a skip"
+/// after the fact.
+///
+/// `skip_count`/`consecutive_skips` are denormalized onto `songs` instead of
+/// a new event-log table — same pattern as the existing `play_count`/
+/// `last_played_at` columns — so the recommendation scorer reads them for
+/// free off the same row scan it already does over every candidate, with no
+/// extra query and no unbounded table growth. `consecutive_skips` resets to
+/// 0 inside `SongDao.incrementPlayCount` (a real, counted play breaks the
+/// streak) and increments via `SongDao.incrementSkipCount`, called from
+/// `AudioPlayerHandler._maybeRecordSkip` — a skip is defined as the
+/// furthest position reached in a listen landing under both 30 seconds and
+/// 50% of the track's duration, reusing `_lastPosition`/`_trackedIndex`,
+/// which `_onPosition`'s existing 50%-or-completion tracking already
+/// maintains per listen. Approved 2026-09-02.
+///
+/// `idx_play_history_played_at` supports the recommendation engine's
+/// co-occurrence signal ("songs played within 30 minutes of a seed play"),
+/// a range scan on `played_at` that the existing song_id-only index doesn't
+/// help with.
+///
+/// `recommendation_seed_cache` is a single-row cache (see `playback_state`/
+/// `aura_state` for the same `id INTEGER PRIMARY KEY CHECK (id = 1)`
+/// convention) holding the Home "Because you played X" section's
+/// auto-picked seed song, with a 1-hour TTL so it doesn't change on every
+/// Lounge open.
+Future<void> _migrationV14(Database db) async {
+  await db.execute('ALTER TABLE songs ADD COLUMN skip_count INTEGER NOT NULL DEFAULT 0');
+  await db.execute('ALTER TABLE songs ADD COLUMN consecutive_skips INTEGER NOT NULL DEFAULT 0');
+
+  await db.execute('CREATE INDEX idx_play_history_played_at ON play_history (played_at)');
+
+  await db.execute('''
+    CREATE TABLE recommendation_seed_cache (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      current_seed_song_id INTEGER NOT NULL,
+      selected_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      FOREIGN KEY (current_seed_song_id) REFERENCES songs (id) ON DELETE CASCADE
+    )
+  ''');
 }

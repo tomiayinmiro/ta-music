@@ -33,4 +33,16 @@ class SettingsRepository {
 
   Future<void> setTranslationTargetLanguage(String? code) =>
       _dao.set(_translationTargetLanguageKey, code ?? '');
+
+  static const _recommendationsEnabledKey = 'recommendations_enabled';
+
+  /// Whether the local recommendation engine (Home's "Because you played X"
+  /// section, the context menu's "More like this") is active. Defaults to
+  /// true — unlike `resumeAfterInterruption`, this is a feature the user
+  /// opts *out* of, not into, so an unset key reads as enabled.
+  Stream<bool> watchRecommendationsEnabled() =>
+      watchQuery({'settings'}, () async => (await _dao.get(_recommendationsEnabledKey)) != 'false');
+
+  Future<void> setRecommendationsEnabled(bool value) =>
+      _dao.set(_recommendationsEnabledKey, value.toString());
 }

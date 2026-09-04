@@ -8,6 +8,7 @@ import '../repositories/library_repository.dart';
 import '../repositories/lyrics_repository.dart';
 import '../repositories/playback_state_repository.dart';
 import '../repositories/playlist_repository.dart';
+import '../repositories/recommendation_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/song_repository.dart';
 import '../repositories/translation_repository.dart';
@@ -90,5 +91,14 @@ final translationRepositoryProvider = FutureProvider<TranslationRepository>((ref
     client: ref.watch(translationClientProvider),
     cacheDao: await ref.watch(translationsCacheDaoProvider.future),
     email: myMemoryContactEmail,
+  );
+});
+
+final recommendationRepositoryProvider = FutureProvider<RecommendationRepository>((ref) async {
+  return RecommendationRepository(
+    await ref.watch(songDaoProvider.future),
+    await ref.watch(playHistoryDaoProvider.future),
+    await ref.watch(favoriteDaoProvider.future),
+    await ref.watch(recommendationSeedCacheDaoProvider.future),
   );
 });

@@ -9,6 +9,7 @@ import '../../../core/theme/spacing.dart';
 import '../../../data/models/song.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
+import '../../../data/providers/recommendation_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../data/repositories/library_repository.dart';
 import '../../../shared/widgets/cover_art.dart';
@@ -281,48 +282,119 @@ class _HomeContent extends ConsumerWidget {
               children: [
                 const SectionHeader(title: 'Recently Played'),
                 const SizedBox(height: AppSpacing.stackSm),
-                SizedBox(
-                  height: 188,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: songs.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.stackSm),
-                    itemBuilder: (context, i) {
-                      final song = songs[i];
-                      return SizedBox(
-                        width: 128,
-                        child: GestureDetector(
-                          onTap: () => ref.read(playbackServiceProvider).playFromSong(song, songs),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const CoverArt(path: null, size: 128),
-                              const SizedBox(height: AppSpacing.stackSm),
-                              Text(
-                                song.displayTitle,
-                                style: Theme.of(context).textTheme.titleSmall,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                song.displayArtist,
-                                style: Theme.of(context).textTheme.bodySmall,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                _HorizontalSongRow(
+                  songs: songs,
+                  onTap: (song) => ref.read(playbackServiceProvider).playFromSong(song, songs),
                 ),
               ],
             );
           },
         ),
+        const SizedBox(height: AppSpacing.stackLg),
+        const _RecommendationsSection(),
       ],
+    );
+  }
+}
+
+/// Home's "Similar to X" section — see Phase 6 batch 1. Hides itself
+/// entirely (no header, no empty state) whenever there's no seed:
+/// recommendations are off in Settings, the library doesn't have enough
+/// listening history yet, or nothing in recent plays qualifies as a seed.
+class _RecommendationsSection extends ConsumerWidget {
+  const _RecommendationsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final seedAsync = ref.watch(homeRecommendationSeedProvider);
+    if (seedAsync.isLoading || seedAsync.hasError) return const SizedBox.shrink();
+    final seed = seedAsync.value;
+    if (seed == null) return const SizedBox.shrink();
+
+    final recommendationsAsync = ref.watch(homeRecommendationsProvider);
+    return recommendationsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (songs) {
+        if (songs.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionHeader(title: 'Similar to ${seed.displayTitle}'),
+            const SizedBox(height: AppSpacing.stackSm),
+            _HorizontalSongRow(
+              songs: songs,
+              onTap: (song) => ref.read(playbackServiceProvider).playFromSong(song, songs),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The horizontally-scrollable cover-art-card row shared by "Recently
+/// Played" and "Similar to X".
+class _HorizontalSongRow extends StatelessWidget {
+  const _HorizontalSongRow({required this.songs, required this.onTap});
+
+  final List<Song> songs;
+  final void Function(Song song) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 188,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: songs.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.stackSm),
+        itemBuilder: (context, i) => _HorizontalSongCard(song: songs[i], onTap: () => onTap(songs[i])),
+      ),
+    );
+  }
+}
+
+/// One card in [_HorizontalSongRow] — its own [ConsumerWidget] (matching the
+/// `_FavoriteRow`/`_QueueTile` pattern elsewhere) so it can resolve its own
+/// cover art from `song.albumId`. Cover art investigation (2026-09-04):
+/// this card used to hardcode `CoverArt(path: null, ...)`, so neither
+/// "Recently Played" nor "Similar to X" ever showed real album art.
+class _HorizontalSongCard extends ConsumerWidget {
+  const _HorizontalSongCard({required this.song, required this.onTap});
+
+  final Song song;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final coverArtPath =
+        song.albumId != null ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath : null;
+    return SizedBox(
+      width: 128,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CoverArt(path: coverArtPath, size: 128),
+            const SizedBox(height: AppSpacing.stackSm),
+            Text(
+              song.displayTitle,
+              style: Theme.of(context).textTheme.titleSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              song.displayArtist,
+              style: Theme.of(context).textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -362,6 +434,8 @@ class _ContinueListeningHero extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final coverArtPath =
+        song.albumId != null ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath : null;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.containerMargin),
       decoration: BoxDecoration(
@@ -370,7 +444,7 @@ class _ContinueListeningHero extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          const CoverArt(path: null, size: 88),
+          CoverArt(path: coverArtPath, size: 88),
           const SizedBox(width: AppSpacing.stackMd),
           Expanded(
             child: Column(
