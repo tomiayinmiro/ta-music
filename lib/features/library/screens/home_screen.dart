@@ -378,7 +378,7 @@ class _HorizontalSongCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            CoverArt(path: coverArtPath, size: 128),
+            CoverArt(path: coverArtPath, size: 128, song: song),
             const SizedBox(height: AppSpacing.stackSm),
             Text(
               song.displayTitle,
@@ -444,7 +444,7 @@ class _ContinueListeningHero extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          CoverArt(path: coverArtPath, size: 88),
+          CoverArt(path: coverArtPath, size: 88, song: song),
           const SizedBox(width: AppSpacing.stackMd),
           Expanded(
             child: Column(

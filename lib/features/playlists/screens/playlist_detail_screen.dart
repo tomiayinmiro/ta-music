@@ -314,7 +314,7 @@ class _PlaylistSongRow extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.gutter, vertical: AppSpacing.stackSm),
         child: Row(
           children: [
-            CoverArt(path: coverArtPath, size: 44),
+            CoverArt(path: coverArtPath, size: 44, song: song),
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(
               child: Column(

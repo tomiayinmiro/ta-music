@@ -101,6 +101,7 @@ class _SongContextMenuState extends ConsumerState<_SongContextMenu> {
                           ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath
                           : null,
                       size: 56,
+                      song: song,
                     ),
                     const SizedBox(width: AppSpacing.stackMd),
                     Expanded(

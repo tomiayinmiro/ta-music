@@ -68,7 +68,7 @@ class SongListTile extends ConsumerWidget {
                 child: Checkbox(value: isSelected, onChanged: (_) => onTap()),
               )
             else
-              CoverArt(path: resolvedCoverArtPath, size: 48),
+              CoverArt(path: resolvedCoverArtPath, size: 48, song: song),
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(
               child: Column(

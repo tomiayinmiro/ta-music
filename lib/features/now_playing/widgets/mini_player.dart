@@ -68,6 +68,7 @@ class MiniPlayer extends ConsumerWidget {
                       path: coverArtPath,
                       size: 44,
                       borderRadius: AppRadius.borderRadiusSm,
+                      song: song,
                     ),
                   ),
                   const SizedBox(width: AppSpacing.stackSm),

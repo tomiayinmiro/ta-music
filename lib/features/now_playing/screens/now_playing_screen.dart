@@ -179,6 +179,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                     path: coverArtPath,
                                     size: coverSize,
                                     borderRadius: AppRadius.borderRadiusXl,
+                                    song: song,
                                   ),
                                 ),
                           const SizedBox(height: AppSpacing.stackLg),

@@ -1,11 +1,22 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
 
 import '../../core/theme/radius.dart';
+import '../../data/models/song.dart';
+import '../../data/services/fallback_cover_resolver.dart';
+
+final _logger = Logger();
 
 /// Album/song/artist cover art with a consistent placeholder when no art
 /// has been extracted yet (no embedded picture, no folder.jpg/cover.jpg).
+///
+/// When [song] is supplied and there's no real art to show, a bundled
+/// fallback image is displayed instead of the plain note icon — see
+/// [FallbackCoverResolver]. Callers with no specific song in mind (playlist
+/// composite filler tiles, the artist-avatar placeholder, etc.) simply omit
+/// [song] and keep the icon placeholder.
 class CoverArt extends StatelessWidget {
   const CoverArt({
     super.key,
@@ -13,16 +24,20 @@ class CoverArt extends StatelessWidget {
     this.size,
     this.borderRadius = AppRadius.borderRadiusMd,
     this.isCircle = false,
+    this.song,
   });
 
   final String? path;
   final double? size;
   final BorderRadius borderRadius;
   final bool isCircle;
+  final Song? song;
 
   @override
   Widget build(BuildContext context) {
     final radius = isCircle ? null : borderRadius;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final cacheDimension = (size != null && size!.isFinite) ? (size! * dpr).round() : null;
 
     Widget content;
     if (path != null && File(path!).existsSync()) {
@@ -33,8 +48,6 @@ class CoverArt extends StatelessWidget {
       // scrolling list (Gallery, Singles, Queue...) was paying that decode
       // cost. Scaled to the actual display size × device pixel ratio, so
       // it still renders crisp.
-      final dpr = MediaQuery.of(context).devicePixelRatio;
-      final cacheDimension = (size != null && size!.isFinite) ? (size! * dpr).round() : null;
       content = Image.file(
         File(path!),
         width: size,
@@ -43,6 +56,20 @@ class CoverArt extends StatelessWidget {
         cacheWidth: cacheDimension,
         cacheHeight: cacheDimension,
         errorBuilder: (context, error, stack) => _placeholder(context),
+      );
+    } else if (song != null) {
+      final assetPath = FallbackCoverResolver.resolveFor(song!);
+      content = Image.asset(
+        assetPath,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: cacheDimension,
+        cacheHeight: cacheDimension,
+        errorBuilder: (context, error, stack) {
+          _logger.w('Fallback cover asset missing or corrupt: $assetPath', error: error);
+          return _placeholder(context);
+        },
       );
     } else {
       content = _placeholder(context);

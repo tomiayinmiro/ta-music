@@ -50,3 +50,7 @@ app.*.map.json
 # Stitch design source (mockups/screenshots, not app code)
 /designs
 
+# Original, unoptimized fallback-cover source images (up to ~4.9MB each) —
+# only the optimized versions in assets/fallback_covers/ are bundled/tracked
+/fallback_covers
+

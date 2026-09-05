@@ -103,6 +103,8 @@ flutter:
 
   assets:
     - assets/aura/
+    - assets/fallback_covers/
+    - assets/fallback_covers/bible/
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

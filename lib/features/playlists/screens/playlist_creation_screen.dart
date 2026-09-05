@@ -188,7 +188,7 @@ class _SongPickRow extends ConsumerWidget {
 
     return ListTile(
       onTap: onToggle,
-      leading: CoverArt(path: coverArtPath, size: 44),
+      leading: CoverArt(path: coverArtPath, size: 44, song: song),
       title: Text(song.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(song.displayArtist, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Icon(

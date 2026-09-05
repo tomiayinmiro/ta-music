@@ -178,7 +178,7 @@ class _FavoriteRow extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.gutter, vertical: AppSpacing.stackSm),
         child: Row(
           children: [
-            CoverArt(path: coverArtPath, size: 48),
+            CoverArt(path: coverArtPath, size: 48, song: song),
             const SizedBox(width: AppSpacing.stackSm),
             Expanded(
               child: Column(

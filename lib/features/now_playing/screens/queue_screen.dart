@@ -228,6 +228,7 @@ class _QueueTile extends StatelessWidget {
                   path: coverArtPath,
                   size: isCurrent ? 56 : 48,
                   borderRadius: AppRadius.borderRadiusSm,
+                  song: song,
                 ),
                 if (isCurrent)
                   DecoratedBox(

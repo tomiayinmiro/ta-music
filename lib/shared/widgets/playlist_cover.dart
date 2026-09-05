@@ -34,7 +34,7 @@ class PlaylistCover extends ConsumerWidget {
       final coverPath = only?.albumId != null
           ? ref.watch(albumByIdProvider(only!.albumId!)).value?.coverArtPath
           : null;
-      return CoverArt(path: coverPath, size: size, borderRadius: radius);
+      return CoverArt(path: coverPath, size: size, borderRadius: radius, song: only);
     }
 
     final leading = songs.take(4).toList();
@@ -66,6 +66,6 @@ class _CoverQuadrant extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final coverPath =
         song.albumId != null ? ref.watch(albumByIdProvider(song.albumId!)).value?.coverArtPath : null;
-    return CoverArt(path: coverPath, size: double.infinity, borderRadius: BorderRadius.zero);
+    return CoverArt(path: coverPath, size: double.infinity, borderRadius: BorderRadius.zero, song: song);
   }
 }
