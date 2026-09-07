@@ -5,6 +5,7 @@ import '../../../core/theme/spacing.dart';
 import '../../../core/utils/duration_format.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../favorites/screens/favorites_screen.dart';
+import '../../feedback/screens/feedback_help_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../providers/shell_tab_provider.dart';
 
@@ -63,41 +64,72 @@ class _AppNavDrawerState extends ConsumerState<AppNavDrawer> {
               ),
             ),
             const Divider(height: 1),
-            const SizedBox(height: AppSpacing.stackSm),
-            _NavItem(
-              icon: Icons.home_rounded,
-              label: 'Lounge',
-              selected: selectedIndex == 0,
-              onTap: () => _selectTab(0),
+            // Three-band layout: fixed header above (outside this Expanded),
+            // a scrollable middle for the primary nav entries, and a fixed
+            // bottom band below (outside this Expanded) for Feedback & Help
+            // + Settings — those two must never scroll out of view. A plain
+            // Column with a Spacer to push the bottom band down doesn't
+            // degrade safely: on a screen short enough that the middle
+            // content (plus the expanded Local Stats panel) overflows, the
+            // Spacer approach clips content instead of wrapping, silently
+            // cutting off whatever comes last with no way to reach it —
+            // confirmed on the Tecno BF6 test device. Only the middle band
+            // is wrapped in a scroll view; the bottom band sits in the
+            // Column's normal (non-flex) flow so it keeps its natural
+            // height and is always fully visible.
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: AppSpacing.stackSm),
+                    _NavItem(
+                      icon: Icons.home_rounded,
+                      label: 'Lounge',
+                      selected: selectedIndex == 0,
+                      onTap: () => _selectTab(0),
+                    ),
+                    _NavItem(
+                      icon: Icons.library_music_rounded,
+                      label: 'The Gallery',
+                      selected: selectedIndex == 1,
+                      onTap: () => _selectTab(1),
+                    ),
+                    _NavItem(
+                      icon: Icons.favorite_outline_rounded,
+                      label: 'Favorites',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(
+                          context,
+                        ).push(MaterialPageRoute(builder: (_) => const FavoritesScreen()));
+                      },
+                    ),
+                    _NavItem(
+                      icon: Icons.bar_chart_rounded,
+                      label: 'Local Stats',
+                      selected: _statsExpanded,
+                      trailing: Icon(
+                        _statsExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      ),
+                      onTap: () => setState(() => _statsExpanded = !_statsExpanded),
+                    ),
+                    if (_statsExpanded) const _LocalStatsPanel(),
+                  ],
+                ),
+              ),
             ),
+            const Divider(height: 1),
             _NavItem(
-              icon: Icons.library_music_rounded,
-              label: 'The Gallery',
-              selected: selectedIndex == 1,
-              onTap: () => _selectTab(1),
-            ),
-            _NavItem(
-              icon: Icons.favorite_outline_rounded,
-              label: 'Favorites',
+              icon: Icons.feedback_outlined,
+              label: 'Feedback & Help',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const FavoritesScreen()));
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FeedbackHelpScreen()),
+                );
               },
             ),
-            _NavItem(
-              icon: Icons.bar_chart_rounded,
-              label: 'Local Stats',
-              selected: _statsExpanded,
-              trailing: Icon(
-                _statsExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-              ),
-              onTap: () => setState(() => _statsExpanded = !_statsExpanded),
-            ),
-            if (_statsExpanded) const _LocalStatsPanel(),
-            const Spacer(),
-            const Divider(height: 1),
             _NavItem(
               icon: Icons.settings_outlined,
               label: 'Settings',

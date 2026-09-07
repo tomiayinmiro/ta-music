@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/feedback/feedback_client.dart';
 import '../services/lyrics/lrclib_client.dart';
 import '../services/lyrics/local_lrc_file_reader.dart';
 import '../services/translation/translation_client.dart';
@@ -23,4 +24,8 @@ final localLrcFileReaderProvider = Provider<LocalLrcFileReader>((ref) {
 
 final translationClientProvider = Provider<TranslationClient>((ref) {
   return TranslationClient(ref.watch(dioProvider));
+});
+
+final feedbackClientProvider = Provider<FeedbackClient>((ref) {
+  return FeedbackClient(ref.watch(dioProvider));
 });

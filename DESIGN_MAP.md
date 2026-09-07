@@ -37,6 +37,7 @@ This file tells Claude Code which design asset to use when building each screen 
 |Custom EQ presets management|`designs/custom\_eq\_presets/`|6|Save, rename, delete user presets|
 |Recommendations "For You"|*(use `designs/nocturnal\_frequency\_feed/` as VISUAL reference only — content is local recommendations, not curators)*|6|Ask before building — confirm the visual pattern is a fit|
 |Settings — root|*(not in Stitch folders — ASK BEFORE BUILDING)*|7|Standard settings screen with sections|
+|Feedback & Help|*(not in Stitch folders — built from sonic\_sanctuary\_2 tokens, approved 2026-09-07)*|pre-7|Nav drawer entry after Settings. Help tab: expandable FAQ list (`ExpansionTile`, same glass-card treatment as elsewhere). Feedback tab: form (type/subject/message/optional email) posting to Web3Forms, matching the manual lyrics editor's field styling.|
 |Settings — audio customization sub-screen|`designs/navigation\_drawer\_audio\_customization/`|7|Audio-related settings entry point|
 |Loading / transition state|`designs/frequency\_transition\_flow/`|7|Minimal animated loading indicator, used app-wide|
 |Onboarding / first-launch|*(not in Stitch folders — ASK BEFORE BUILDING)*|7|Folder picker + permissions + brief tour|
