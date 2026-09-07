@@ -6,7 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Schema version. Bump this and add a new entry to [_migrations] for every
 /// change — never edit an already-shipped migration in place.
-const int kDatabaseVersion = 14;
+const int kDatabaseVersion = 15;
 
 typedef _Migration = Future<void> Function(Database db);
 
@@ -28,6 +28,7 @@ final Map<int, _Migration> _migrations = {
   12: _migrationV12,
   13: _migrationV13,
   14: _migrationV14,
+  15: _migrationV15,
 };
 
 /// Must be called once, before any [AppDatabase.instance] access, so the
@@ -547,4 +548,23 @@ Future<void> _migrationV14(Database db) async {
       FOREIGN KEY (current_seed_song_id) REFERENCES songs (id) ON DELETE CASCADE
     )
   ''');
+}
+
+/// Phase 6 batch 2 (Equalizer, Android-only — see CLAUDE.md): the
+/// `custom_eq_presets` table has existed unused since `_migrationV1`, sized
+/// for exactly this feature (`bands_json` stores whatever band count the
+/// *saving* device's real `AndroidEqualizer` reports — band count isn't
+/// fixed by us, see `distributeBuiltInPreset`'s doc). Adds `icon`, matching
+/// `designs/custom_eq_presets/`'s icon-picker on the save form (one of
+/// `graphic_eq`/`headphones`/`speaker`); defaults existing rows (there are
+/// none pre-Phase-6) to `graphic_eq`.
+///
+/// Live EQ state (on/off + per-band gains) is deliberately NOT a table here
+/// — it lives in the existing `settings` key-value store (`eq_enabled` /
+/// `eq_band_gains`), same convention as `resumeAfterInterruption`, since
+/// it's a single app-level value, not a collection of rows.
+Future<void> _migrationV15(Database db) async {
+  await db.execute(
+    "ALTER TABLE custom_eq_presets ADD COLUMN icon TEXT NOT NULL DEFAULT 'graphic_eq'",
+  );
 }

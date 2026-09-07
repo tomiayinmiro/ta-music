@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/translation_constants.dart';
 import '../repositories/album_repository.dart';
 import '../repositories/artist_repository.dart';
+import '../repositories/eq_preset_repository.dart';
 import '../repositories/favorite_repository.dart';
 import '../repositories/library_repository.dart';
 import '../repositories/lyrics_repository.dart';
@@ -101,4 +102,8 @@ final recommendationRepositoryProvider = FutureProvider<RecommendationRepository
     await ref.watch(favoriteDaoProvider.future),
     await ref.watch(recommendationSeedCacheDaoProvider.future),
   );
+});
+
+final eqPresetRepositoryProvider = FutureProvider<EqPresetRepository>((ref) async {
+  return EqPresetRepository(await ref.watch(eqPresetDaoProvider.future));
 });

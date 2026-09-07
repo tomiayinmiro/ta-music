@@ -49,6 +49,15 @@ class AudioPlayerHandler extends BaseAudioHandler
     required this._playbackStateRepository,
     required this._lyricsPrefetchService,
   }) {
+    // Android-only (Phase 6 batch 2, see CLAUDE.md) — `just_audio_windows`
+    // exposes no equalizer API at all, and attaching an `AndroidEqualizer` on
+    // a platform that can't back it would just sit there inert, so it's kept
+    // out of the pipeline entirely rather than constructed-but-unused.
+    final equalizer = Platform.isAndroid ? AndroidEqualizer() : null;
+    _equalizer = equalizer;
+    _player = AudioPlayer(
+      audioPipeline: equalizer != null ? AudioPipeline(androidAudioEffects: [equalizer]) : null,
+    );
     _init();
   }
 
@@ -60,7 +69,8 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   final _logger = Logger();
 
-  final _player = AudioPlayer();
+  late final AudioPlayer _player;
+  late final AndroidEqualizer? _equalizer;
 
   final _queueSongsSubject = BehaviorSubject<List<Song>>.seeded(const []);
   @override
@@ -145,6 +155,13 @@ class AudioPlayerHandler extends BaseAudioHandler
   // avoid writing to disk on every position tick.
   Timer? _seekSaveDebounce;
 
+  // Same debounce shape as `_seekSaveDebounce`: a dragged EQ slider calls
+  // `setEqualizerBandGain` on every frame of the gesture, and the live
+  // `band.setGain()` call needs to stay unthrottled for audible real-time
+  // response — only the sqlite persistence is debounced, so a fast drag
+  // doesn't write to disk dozens of times.
+  Timer? _eqGainsSaveDebounce;
+
   // Bug 1 (device testing pass): periodic lightweight instrumentation so a
   // recurrence of the "crashes after 30+ minutes" report leaves a trail —
   // process RSS, queue length, and cache sizes are cheap to sample and are
@@ -224,6 +241,8 @@ class AudioPlayerHandler extends BaseAudioHandler
     _settingsRepository.watchResumeAfterInterruption().listen(
       (value) => _resumeAfterInterruption = value,
     );
+
+    if (_equalizer != null) unawaited(_restoreEqualizerState());
 
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
@@ -692,6 +711,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> dispose() async {
     _logger.i('[audio_service] AudioPlayerHandler disposing');
     _seekSaveDebounce?.cancel();
+    _eqGainsSaveDebounce?.cancel();
     _instrumentationTimer?.cancel();
     _listenFlushTimer?.cancel();
     _lifecycleListener?.dispose();
@@ -820,6 +840,87 @@ class AudioPlayerHandler extends BaseAudioHandler
   @override
   Future<void> setPlayerRepeatMode(PlayerRepeatMode mode) =>
       _player.setLoopMode(_fromRepeatMode(mode));
+
+  // --- Equalizer (Phase 6 batch 2, Android-only — see CLAUDE.md) ------
+
+  @override
+  bool get isEqualizerSupported => _equalizer != null;
+
+  @override
+  Future<EqualizerParameters> get equalizerParameters async {
+    final equalizer = _equalizer;
+    if (equalizer == null) {
+      throw StateError('equalizerParameters requested but isEqualizerSupported is false');
+    }
+    final params = await equalizer.parameters;
+    return EqualizerParameters(
+      minDecibels: params.minDecibels,
+      maxDecibels: params.maxDecibels,
+      bands: [
+        for (final band in params.bands)
+          EqualizerBand(index: band.index, centerFrequencyHz: band.centerFrequency),
+      ],
+    );
+  }
+
+  @override
+  Stream<bool> get equalizerEnabledStream => _equalizer?.enabledStream ?? Stream.value(false);
+
+  @override
+  Future<void> setEqualizerEnabled(bool enabled) async {
+    final equalizer = _equalizer;
+    if (equalizer == null) return;
+    await equalizer.setEnabled(enabled);
+    await _settingsRepository.setEqualizerEnabled(enabled);
+  }
+
+  @override
+  Stream<List<double>> get equalizerBandGainsStream {
+    final equalizer = _equalizer;
+    if (equalizer == null) return Stream.value(const <double>[]);
+    return Stream.fromFuture(equalizer.parameters).asyncExpand(
+      (params) => Rx.combineLatestList<double>([for (final band in params.bands) band.gainStream]),
+    );
+  }
+
+  @override
+  Future<void> setEqualizerBandGain(int bandIndex, double gain) async {
+    final equalizer = _equalizer;
+    if (equalizer == null) return;
+    final params = await equalizer.parameters;
+    if (bandIndex < 0 || bandIndex >= params.bands.length) return;
+    await params.bands[bandIndex].setGain(gain);
+    _eqGainsSaveDebounce?.cancel();
+    _eqGainsSaveDebounce = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_settingsRepository.setEqualizerBandGains([for (final band in params.bands) band.gain]));
+    });
+  }
+
+  /// Restores the last-persisted on/off state and per-band gains onto the
+  /// live `AndroidEqualizer` once its real band layout is known — a fresh
+  /// `AndroidEqualizer()` instance always starts disabled with every band at
+  /// 0dB (see `just_audio`'s `AudioEffect` doc), so without this the user's
+  /// EQ setup would silently reset every app restart. A stored gains list
+  /// whose length doesn't match the device's current band count is skipped
+  /// rather than applied mismatched — in practice the same device always
+  /// reports the same band count, so this only guards a theoretical edge.
+  Future<void> _restoreEqualizerState() async {
+    final equalizer = _equalizer;
+    if (equalizer == null) return;
+    try {
+      final params = await equalizer.parameters;
+      final enabled = await _settingsRepository.watchEqualizerEnabled().first;
+      await equalizer.setEnabled(enabled);
+      final storedGains = await _settingsRepository.getEqualizerBandGains();
+      if (storedGains != null && storedGains.length == params.bands.length) {
+        for (var i = 0; i < params.bands.length; i++) {
+          await params.bands[i].setGain(storedGains[i]);
+        }
+      }
+    } catch (e, st) {
+      _logger.w('[audio_service] failed to restore equalizer state', error: e, stackTrace: st);
+    }
+  }
 
   // --- BaseAudioHandler overrides the OS can also trigger directly (e.g.
   // Android Auto, Assistant voice commands) — delegate to the same methods

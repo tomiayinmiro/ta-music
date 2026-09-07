@@ -59,3 +59,31 @@ class PlaybackSnapshot {
     hasPrevious: false,
   );
 }
+
+/// One frequency band of the device's real Android equalizer — a
+/// platform-decoupled projection of `just_audio`'s `AndroidEqualizerBand`
+/// (Phase 6 batch 2, Android-only per CLAUDE.md; see `AudioPlayerHandler`).
+/// [centerFrequencyHz] and [index] are read-only device facts, not something
+/// the app chooses — device band count/frequencies vary (5 is typical, but
+/// not guaranteed), which is why the Equalizer screen renders however many
+/// bands [EqualizerParameters.bands] actually reports rather than a fixed
+/// count.
+@immutable
+class EqualizerBand {
+  const EqualizerBand({required this.index, required this.centerFrequencyHz});
+
+  final int index;
+  final double centerFrequencyHz;
+}
+
+/// The device's real equalizer capabilities, resolved once `AndroidEqualizer`
+/// activates on the platform side (only after audio has actually loaded —
+/// see `AudioPlayerHandler.equalizerParameters`'s doc).
+@immutable
+class EqualizerParameters {
+  const EqualizerParameters({required this.minDecibels, required this.maxDecibels, required this.bands});
+
+  final double minDecibels;
+  final double maxDecibels;
+  final List<EqualizerBand> bands;
+}

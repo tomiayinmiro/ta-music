@@ -81,4 +81,14 @@ class PlaybackService {
   /// Jumps straight to the queue item at [index] — the Queue screen's
   /// tap-to-jump gesture.
   Future<void> skipToQueueItemAt(int index) => _handler.skipToQueueItem(index);
+
+  // --- Equalizer (Phase 6 batch 2, Android-only) -----------------------
+
+  bool get isEqualizerSupported => _handler.isEqualizerSupported;
+  Future<EqualizerParameters> get equalizerParameters => _handler.equalizerParameters;
+  Stream<bool> get equalizerEnabledStream => _handler.equalizerEnabledStream;
+  Future<void> setEqualizerEnabled(bool enabled) => _handler.setEqualizerEnabled(enabled);
+  Stream<List<double>> get equalizerBandGainsStream => _handler.equalizerBandGainsStream;
+  Future<void> setEqualizerBandGain(int bandIndex, double gain) =>
+      _handler.setEqualizerBandGain(bandIndex, gain);
 }

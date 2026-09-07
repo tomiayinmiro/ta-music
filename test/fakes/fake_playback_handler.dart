@@ -56,4 +56,18 @@ class FakePlaybackHandler implements PlaybackHandler {
   Future<void> reorderQueue(int oldIndex, int newIndex) async {}
   @override
   Future<void> removeFromQueue(int index) async {}
+
+  @override
+  bool get isEqualizerSupported => false;
+  @override
+  Future<EqualizerParameters> get equalizerParameters =>
+      Future<EqualizerParameters>.error(StateError('equalizer not supported in tests'));
+  @override
+  Stream<bool> get equalizerEnabledStream => Stream.value(false);
+  @override
+  Future<void> setEqualizerEnabled(bool enabled) async {}
+  @override
+  Stream<List<double>> get equalizerBandGainsStream => Stream.value(const <double>[]);
+  @override
+  Future<void> setEqualizerBandGain(int bandIndex, double gain) async {}
 }

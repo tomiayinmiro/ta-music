@@ -8,12 +8,14 @@ import 'package:path/path.dart' as p;
 import '../../../core/theme/radius.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../core/theme/typography.dart';
+import '../../../data/providers/equalizer_providers.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/recommendation_providers.dart';
 import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
+import '../../equalizer/screens/equalizer_screen.dart';
 import 'lyrics_screen.dart';
 
 /// Settings — "Manage folders" pulled forward from Phase 7 (approved
@@ -126,6 +128,22 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
           ),
+          if (ref.watch(isEqualizerSupportedProvider)) ...[
+            const SizedBox(height: AppSpacing.stackLg),
+            Text('Equalizer', style: theme.textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.stackSm),
+            GlassContainer(
+              padding: EdgeInsets.zero,
+              child: ListTile(
+                leading: const Icon(Icons.graphic_eq_rounded),
+                title: const Text('Equalizer'),
+                subtitle: const Text('Band tuning, quick presets, and your own custom presets.'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute<void>(builder: (_) => const EqualizerScreen())),
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.stackLg),
           Text('Recommendations', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),

@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import '../database/daos/album_dao.dart';
 import '../database/daos/artist_dao.dart';
 import '../database/daos/aura_state_dao.dart';
+import '../database/daos/eq_preset_dao.dart';
 import '../database/daos/excluded_folder_dao.dart';
 import '../database/daos/favorite_dao.dart';
 import '../database/daos/listening_segment_dao.dart';
@@ -82,4 +83,8 @@ final translationsCacheDaoProvider = FutureProvider<TranslationsCacheDao>((ref) 
 
 final recommendationSeedCacheDaoProvider = FutureProvider<RecommendationSeedCacheDao>((ref) async {
   return RecommendationSeedCacheDao(await ref.watch(appDatabaseProvider.future));
+});
+
+final eqPresetDaoProvider = FutureProvider<EqPresetDao>((ref) async {
+  return EqPresetDao(await ref.watch(appDatabaseProvider.future));
 });

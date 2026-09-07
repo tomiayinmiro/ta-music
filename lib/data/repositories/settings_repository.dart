@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../database/daos/settings_dao.dart';
 import 'reactive_query.dart';
 
@@ -45,4 +47,34 @@ class SettingsRepository {
 
   Future<void> setRecommendationsEnabled(bool value) =>
       _dao.set(_recommendationsEnabledKey, value.toString());
+
+  static const _eqEnabledKey = 'eq_enabled';
+
+  /// Whether the Android equalizer effect is switched on. Defaults to false
+  /// — `AndroidEqualizer` itself starts disabled (see `just_audio`'s
+  /// `AudioEffect` doc), so an unset key matches the underlying effect's own
+  /// default rather than silently diverging from it. Phase 6 batch 2.
+  Stream<bool> watchEqualizerEnabled() =>
+      watchQuery({'settings'}, () async => (await _dao.get(_eqEnabledKey)) == 'true');
+
+  Future<void> setEqualizerEnabled(bool value) => _dao.set(_eqEnabledKey, value.toString());
+
+  static const _eqBandGainsKey = 'eq_band_gains';
+
+  /// The last-set gain (decibels) for each device equalizer band, in device
+  /// band-index order — null if never set (fresh install, or the equalizer
+  /// has never activated on this device yet). `AudioPlayerHandler` restores
+  /// these onto the live `AndroidEqualizer` once its real band count is
+  /// known; a stored list whose length no longer matches the device's
+  /// current band count is ignored by the caller rather than applied
+  /// mismatched.
+  Future<List<double>?> getEqualizerBandGains() async {
+    final raw = await _dao.get(_eqBandGainsKey);
+    if (raw == null) return null;
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded.map((e) => (e as num).toDouble()).toList();
+  }
+
+  Future<void> setEqualizerBandGains(List<double> gains) =>
+      _dao.set(_eqBandGainsKey, jsonEncode(gains));
 }

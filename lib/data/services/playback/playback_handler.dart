@@ -35,4 +35,27 @@ abstract class PlaybackHandler {
   Future<void> setPlayerRepeatMode(PlayerRepeatMode mode);
   Future<void> reorderQueue(int oldIndex, int newIndex);
   Future<void> removeFromQueue(int index);
+
+  /// Whether this handler can drive a live equalizer at all — false on every
+  /// platform except Android (Phase 6 batch 2, see CLAUDE.md). UI gates the
+  /// entire Equalizer entry point on this rather than attempting the feature
+  /// and showing an error.
+  bool get isEqualizerSupported;
+
+  /// Resolves once the device's real equalizer band layout is known — which,
+  /// per `just_audio`'s `AndroidEqualizer`, only happens after the effect
+  /// activates on the platform side (audio has actually loaded at least
+  /// once). Never resolves on a platform where [isEqualizerSupported] is
+  /// false, so callers must check that first rather than awaiting this
+  /// unconditionally.
+  Future<EqualizerParameters> get equalizerParameters;
+
+  Stream<bool> get equalizerEnabledStream;
+  Future<void> setEqualizerEnabled(bool enabled);
+
+  /// Live gain (decibels) for every device band, in band-index order —
+  /// updates immediately as [setEqualizerBandGain] is called, including from
+  /// other listeners (e.g. a preset applying several bands at once).
+  Stream<List<double>> get equalizerBandGainsStream;
+  Future<void> setEqualizerBandGain(int bandIndex, double gain);
 }
