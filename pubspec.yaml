@@ -1,5 +1,5 @@
 name: ta_music
-description: "A new Flutter project."
+description: "TA Music - offline music player"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -83,6 +83,53 @@ dev_dependencies:
   riverpod_lint: 2.6.4
   custom_lint: ^0.7.3
   mocktail: ^1.0.5
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
+
+# flutter_launcher_icons config — generates Android + Windows launcher icons
+# from the custom logo. Android gets both a legacy square icon (image_path,
+# full-bleed) and a proper adaptive icon (padded foreground + solid dark
+# background) so masked launchers (circle/squircle) don't crop the artwork.
+# Both source images are quantized + (for the foreground) alpha-recomposed
+# copies produced by tool/generate_logo_assets.dart, not the raw source —
+# see that script's doc comment for why (bundle size). iOS/macOS/web/linux
+# are not built for this project (see CLAUDE.md's target platforms), so left
+# disabled.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/logo/ta_music_icon_source.png"
+  adaptive_icon_background: "#131313"
+  adaptive_icon_foreground: "assets/images/logo/ta_music_icon_adaptive_fg.png"
+  # The provided foreground is already padded to the adaptive-icon safe zone
+  # (see tool/generate_logo_assets.dart) — without this, the plugin adds its
+  # own default 16% inset on top, double-padding and shrinking the visible
+  # logo far more than intended.
+  adaptive_icon_foreground_inset: 0
+  windows:
+    generate: true
+    image_path: "assets/images/logo/ta_music_icon_source.png"
+    icon_size: 256
+
+# flutter_native_splash config — dark background (#131313, matches
+# AppColors.background/surface so the splash-to-Home transition has no
+# color shift) with the logo centered, on both Android and Windows.
+# android_12 targets the OS-native Android 12+ splash screen API
+# separately: that surface also masks its icon into a circle, so it uses the
+# same padded foreground as the adaptive launcher icon rather than the
+# full-bleed source.
+flutter_native_splash:
+  color: "#131313"
+  image: "assets/images/logo/ta_music_icon_source.png"
+  android_12:
+    color: "#131313"
+    image: "assets/images/logo/ta_music_icon_adaptive_fg.png"
+  android: true
+  web: false
+  # No "windows" key: flutter_native_splash only supports Android/iOS/web.
+  # Windows startup is handled separately — see win32_window.cpp, which
+  # already sets a null background brush (no white-flash risk) rather than
+  # a custom native splash window. Approved 2026-09-08.
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -110,7 +157,7 @@ flutter:
     - assets/aura/
     - assets/fallback_covers/
     - assets/fallback_covers/bible/
-    - assets/images/app_icon.png
+    - assets/images/logo/ta_music_icon.png
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

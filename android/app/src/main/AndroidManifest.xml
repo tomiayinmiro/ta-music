@@ -26,7 +26,7 @@
          failing with a connection error. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="ta_music"
+        android:label="TA Music"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

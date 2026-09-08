@@ -9,9 +9,7 @@ import '../../../shared/widgets/glass_container.dart';
 /// Reached from the nav drawer's "About" entry. Static app-info content —
 /// no Stitch design exists for this screen (see DESIGN_MAP.md); built from
 /// sonic_sanctuary_2 tokens matching Settings/Feedback & Help's section
-/// layout. The app-icon image is the current Android launcher icon copied
-/// into `assets/images/app_icon.png` — there's no real app icon yet, see
-/// the "Replace app icon before release" BACKLOG.md item.
+/// layout.
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -50,7 +48,11 @@ class AboutScreen extends StatelessWidget {
           Center(
             child: ClipRRect(
               borderRadius: AppRadius.borderRadiusLg,
-              child: Image.asset('assets/images/app_icon.png', width: 96, height: 96),
+              child: Image.asset(
+                'assets/images/logo/ta_music_icon.png',
+                width: 132,
+                height: 132,
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.stackMd),

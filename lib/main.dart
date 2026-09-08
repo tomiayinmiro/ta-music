@@ -87,7 +87,7 @@ void main() async {
     ),
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.tamusic.app.ta_music.playback',
-      androidNotificationChannelName: 'TA MUSIC playback',
+      androidNotificationChannelName: 'TA Music playback',
       // Must be paired — audio_service asserts on this. Android forces any
       // active foreground service's notification to be non-dismissible
       // regardless of androidNotificationOngoing, so "ongoing" only means

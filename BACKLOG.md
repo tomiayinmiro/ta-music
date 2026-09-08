@@ -44,12 +44,6 @@ Each item includes: what it is, why deferred, current workaround (if any), rough
 - **Current workaround**: Users just accept imperfect translations, or turn translation off if it's more distracting than helpful.
 - **Scope**: Medium. New UI fields, storage schema addition, precedence logic (manual > auto). ~1-2 sessions.
 
-### Replace app icon before release
-- **What**: TA MUSIC has no real app icon yet — the Android launcher icon (a placeholder) is currently reused as `assets/images/app_icon.png` for display in the nav drawer's About screen too. Design and generate a real icon, regenerate all Android mipmap densities and the Windows `.ico`, and update `assets/images/app_icon.png` to match.
-- **Why deferred**: Not blocking any feature work; purely a pre-launch polish item.
-- **Current workaround**: Placeholder icon everywhere (launcher + About screen).
-- **Scope**: Small. Icon design + `flutter_launcher_icons`-style regeneration across platforms.
-
 ## v1.5 Features (post-v1 release)
 
 Surveyed in the Stitch designs but explicitly held for v1.5 release after v1 ships.
