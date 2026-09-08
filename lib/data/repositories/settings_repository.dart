@@ -77,4 +77,33 @@ class SettingsRepository {
 
   Future<void> setEqualizerBandGains(List<double> gains) =>
       _dao.set(_eqBandGainsKey, jsonEncode(gains));
+
+  static const _lastDismissedUpdateVersionKey = 'last_dismissed_update_version';
+
+  /// The version string the user last tapped "Later" on in the update
+  /// dialog — null if never dismissed, or if a newer version has since been
+  /// published (only ever set to the exact version shown, so an older
+  /// dismissal never suppresses a version the user hasn't seen yet).
+  Future<String?> getLastDismissedUpdateVersion() async {
+    final value = await _dao.get(_lastDismissedUpdateVersionKey);
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
+  Future<void> setLastDismissedUpdateVersion(String version) =>
+      _dao.set(_lastDismissedUpdateVersionKey, version);
+
+  static const _lastUpdateCheckAtKey = 'last_update_check_at';
+
+  /// When the update manifest was last successfully fetched, as an ISO-8601
+  /// string — informational only (surfaced nowhere in the UI yet), kept for
+  /// future diagnostics in the same spirit as the Phase 5 "Lyrics cache"
+  /// debug screen.
+  Future<DateTime?> getLastUpdateCheckAt() async {
+    final value = await _dao.get(_lastUpdateCheckAtKey);
+    if (value == null) return null;
+    return DateTime.tryParse(value);
+  }
+
+  Future<void> setLastUpdateCheckAt(DateTime timestamp) =>
+      _dao.set(_lastUpdateCheckAtKey, timestamp.toIso8601String());
 }

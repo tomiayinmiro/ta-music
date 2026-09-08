@@ -86,5 +86,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Required for url_launcher's canLaunchUrl/launchUrl to find a
+             browser on Android 11+ (package-visibility restrictions) — the
+             update dialog's "Download" button opens an https download URL
+             in an external browser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

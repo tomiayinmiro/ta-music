@@ -24,8 +24,10 @@ import 'lyrics_screen.dart';
 /// borrowed from the one relevant precedent that does exist —
 /// `designs/navigation_drawer_audio_customization`'s "AUDIO ENGINE" drawer
 /// panel — since that's the closest thing sonic_sanctuary_2 offers to a
-/// settings section pattern. The rest of Settings (theme, cache, about)
-/// still isn't built — that's the real Phase 7 scope.
+/// settings section pattern. The rest of Settings (theme, cache) still
+/// isn't built — that's the real Phase 7 scope. Version + About moved out
+/// to their own nav-drawer entries — see CLAUDE.md's Version/About
+/// restructuring decisions.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 

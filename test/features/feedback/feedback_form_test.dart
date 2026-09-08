@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:ta_music/data/models/feedback_type.dart';
 import 'package:ta_music/data/providers/network_providers.dart';
+import 'package:ta_music/data/providers/update_providers.dart';
 import 'package:ta_music/data/services/feedback/feedback_client.dart';
 import 'package:ta_music/features/feedback/widgets/feedback_form.dart';
 
@@ -18,7 +20,21 @@ void main() {
 
   Widget harness() {
     return ProviderScope(
-      overrides: [feedbackClientProvider.overrideWithValue(client)],
+      overrides: [
+        feedbackClientProvider.overrideWithValue(client),
+        // FeedbackForm reads the installed version off this to send with
+        // the report — PackageInfo.fromPlatform() has no real platform
+        // channel to answer it in a widget test, so it's overridden with a
+        // fixed value rather than left to hang.
+        packageInfoProvider.overrideWith(
+          (ref) async => PackageInfo(
+            appName: 'TA MUSIC',
+            packageName: 'com.tamusic.app.ta_music',
+            version: '1.0.0',
+            buildNumber: '1',
+          ),
+        ),
+      ],
       child: const MaterialApp(home: Scaffold(body: FeedbackForm())),
     );
   }

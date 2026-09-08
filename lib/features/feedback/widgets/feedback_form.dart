@@ -4,10 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_info.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../data/models/feedback_type.dart';
 import '../../../data/providers/network_providers.dart';
+import '../../../data/providers/update_providers.dart';
 import '../../../data/services/feedback/feedback_client.dart';
 import '../../../shared/widgets/glass_container.dart';
 
@@ -63,12 +63,13 @@ class _FeedbackFormState extends ConsumerState<FeedbackForm> {
     });
 
     final client = ref.read(feedbackClientProvider);
+    final packageInfo = await ref.read(packageInfoProvider.future);
     final result = await client.submit(
       type: _type!,
       subject: subject,
       message: message,
       email: _emailController.text,
-      appVersion: kAppVersion,
+      appVersion: packageInfo.version,
       platform: Platform.isAndroid ? 'Android' : 'Windows',
     );
 

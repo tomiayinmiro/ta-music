@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/spacing.dart';
 import '../../../core/utils/duration_format.dart';
 import '../../../data/providers/library_providers.dart';
+import '../../../data/providers/update_providers.dart';
+import '../../about/screens/about_screen.dart';
 import '../../favorites/screens/favorites_screen.dart';
 import '../../feedback/screens/feedback_help_screen.dart';
 import '../../settings/screens/settings_screen.dart';
+import '../../update/screens/version_screen.dart';
 import '../providers/shell_tab_provider.dart';
 
 /// Combines both nav-drawer designs (`navigation_drawer_side_menu` and
@@ -21,6 +24,12 @@ import '../providers/shell_tab_provider.dart';
 /// Gained a "Favorites" entry in Phase 4.5 (approved 2026-08-21): Favorites
 /// lost its bottom-nav tab to Aura that phase, so without this entry it was
 /// reachable only through a song's context menu.
+///
+/// The pinned bottom band holds four entries, in order: Version (opens
+/// [VersionScreen], with a "Current version X.X.X" subtitle read from
+/// [packageInfoProvider]), About (opens [AboutScreen]), Feedback & Help,
+/// then Settings. Version + About moved here from Settings' old "About"
+/// section — see CLAUDE.md's Version/About restructuring decisions.
 class AppNavDrawer extends ConsumerStatefulWidget {
   const AppNavDrawer({super.key});
 
@@ -37,6 +46,7 @@ class _AppNavDrawerState extends ConsumerState<AppNavDrawer> {
     final selectedIndex = ref.watch(shellTabIndexProvider);
     final librarySize = ref.watch(librarySizeProvider).valueOrNull ?? 0;
     final artistCount = ref.watch(allArtistsProvider).valueOrNull?.length ?? 0;
+    final installedVersion = ref.watch(packageInfoProvider).valueOrNull?.version;
 
     return Drawer(
       backgroundColor: theme.colorScheme.surface,
@@ -66,8 +76,9 @@ class _AppNavDrawerState extends ConsumerState<AppNavDrawer> {
             const Divider(height: 1),
             // Three-band layout: fixed header above (outside this Expanded),
             // a scrollable middle for the primary nav entries, and a fixed
-            // bottom band below (outside this Expanded) for Feedback & Help
-            // + Settings — those two must never scroll out of view. A plain
+            // bottom band below (outside this Expanded) for Version, About,
+            // Feedback & Help, and Settings — those four must never scroll
+            // out of view. A plain
             // Column with a Spacer to push the bottom band down doesn't
             // degrade safely: on a screen short enough that the middle
             // content (plus the expanded Local Stats panel) overflows, the
@@ -121,6 +132,27 @@ class _AppNavDrawerState extends ConsumerState<AppNavDrawer> {
             ),
             const Divider(height: 1),
             _NavItem(
+              icon: Icons.system_update_rounded,
+              label: 'Version',
+              subtitle: installedVersion == null ? null : 'Current version $installedVersion',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const VersionScreen()),
+                );
+              },
+            ),
+            _NavItem(
+              icon: Icons.info_outline_rounded,
+              label: 'About',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                );
+              },
+            ),
+            _NavItem(
               icon: Icons.feedback_outlined,
               label: 'Feedback & Help',
               onTap: () {
@@ -160,6 +192,7 @@ class _NavItem extends StatelessWidget {
     required this.onTap,
     this.selected = false,
     this.trailing,
+    this.subtitle,
   });
 
   final IconData icon;
@@ -168,6 +201,10 @@ class _NavItem extends StatelessWidget {
   final bool selected;
   final Widget? trailing;
 
+  /// Small muted line under [label] — used by the "Version" entry to show
+  /// "Current version 1.0.0" at a glance without opening the Version screen.
+  final String? subtitle;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -175,6 +212,12 @@ class _NavItem extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: color),
       title: Text(label, style: theme.textTheme.titleSmall?.copyWith(color: color)),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
       trailing: trailing,
       selected: selected,
       onTap: onTap,

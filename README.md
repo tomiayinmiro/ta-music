@@ -1,17 +1,21 @@
-# ta_music
+# TA MUSIC
 
-A new Flutter project.
+Cross-platform offline music player for Android and Windows.
+Built with Flutter.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- Local music library scanning and playback
+- Karaoke-style lyrics with automatic translation
+- Local recommendation engine
+- Aura listening progression system
+- Custom equalizer (Android)
+- Offline-first, no accounts, no tracking
 
-A few resources to get you started if this is your first Flutter project:
+## Download
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+APK downloads: [GitHub Releases](https://github.com/tomiayinmiro/ta-music/releases)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Feedback
+
+Open an issue or use the in-app Feedback form.
