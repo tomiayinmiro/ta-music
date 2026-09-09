@@ -38,3 +38,15 @@ final resumeAfterInterruptionProvider = StreamProvider<bool>((ref) async* {
   final repo = await ref.watch(settingsRepositoryProvider.future);
   yield* repo.watchResumeAfterInterruption();
 });
+
+/// Global playback speed multiplier (0.75x-2x) — surfaced in Settings and as
+/// a quick-access cycling indicator on Now Playing. `AudioPlayerHandler`
+/// applies this reactively via `_player.setSpeed()`.
+final playbackSpeedProvider = StreamProvider<double>((ref) async* {
+  final repo = await ref.watch(settingsRepositoryProvider.future);
+  yield* repo.watchPlaybackSpeed();
+});
+
+/// The fixed cycle Now Playing's speed indicator and Settings' speed picker
+/// both step through.
+const kPlaybackSpeedOptions = [0.75, 1.0, 1.25, 1.5, 2.0];

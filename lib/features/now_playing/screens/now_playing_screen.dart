@@ -360,6 +360,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              const _SpeedIndicator(),
+                              const SizedBox(width: AppSpacing.stackMd),
                               if (song.format != null)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -414,6 +416,40 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Quick-access speed cycling — tapping steps through
+/// `kPlaybackSpeedOptions` in order, wrapping back to the start. Speed is
+/// global, not per-song, matching Settings' picker (approved 2026-09-08
+/// Settings expansion) — this lives next to the transport controls rather
+/// than only in Settings because the audio-Bible use case needs to change
+/// speed mid-listen without leaving Now Playing.
+class _SpeedIndicator extends ConsumerWidget {
+  const _SpeedIndicator();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final speed = ref.watch(playbackSpeedProvider).value ?? 1.0;
+    final label = speed == speed.roundToDouble() ? '${speed.toInt()}x' : '${speed}x';
+    return InkWell(
+      borderRadius: AppRadius.borderRadiusFull,
+      onTap: () async {
+        final currentIndex = kPlaybackSpeedOptions.indexOf(speed);
+        final nextIndex = (currentIndex + 1) % kPlaybackSpeedOptions.length;
+        final repo = await ref.read(settingsRepositoryProvider.future);
+        await repo.setPlaybackSpeed(kPlaybackSpeedOptions[nextIndex]);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: AppRadius.borderRadiusFull,
+        ),
+        child: Text(label, style: theme.textTheme.labelSmall),
       ),
     );
   }

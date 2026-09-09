@@ -241,6 +241,9 @@ class AudioPlayerHandler extends BaseAudioHandler
     _settingsRepository.watchResumeAfterInterruption().listen(
       (value) => _resumeAfterInterruption = value,
     );
+    _settingsRepository.watchPlaybackSpeed().listen(
+      (value) => unawaited(_player.setSpeed(value)),
+    );
 
     if (_equalizer != null) unawaited(_restoreEqualizerState());
 

@@ -92,6 +92,27 @@ class SettingsRepository {
   Future<void> setLastDismissedUpdateVersion(String version) =>
       _dao.set(_lastDismissedUpdateVersionKey, version);
 
+  static const _themeModeKey = 'theme_mode';
+
+  /// Raw 'light' / 'dark' / 'system' — kept as a plain string here (not a
+  /// `ThemeMode`) so the data layer stays Flutter-free; parsed in
+  /// `theme_providers.dart`. Defaults to 'system'.
+  Stream<String> watchThemeMode() =>
+      watchQuery({'settings'}, () async => (await _dao.get(_themeModeKey)) ?? 'system');
+
+  Future<void> setThemeMode(String mode) => _dao.set(_themeModeKey, mode);
+
+  static const _playbackSpeedKey = 'playback_speed';
+
+  /// Global playback speed multiplier applied to every song — not per-song
+  /// for v1, per CLAUDE.md's Settings-expansion decisions. Defaults to 1.0.
+  Stream<double> watchPlaybackSpeed() => watchQuery({'settings'}, () async {
+    final raw = await _dao.get(_playbackSpeedKey);
+    return raw != null ? (double.tryParse(raw) ?? 1.0) : 1.0;
+  });
+
+  Future<void> setPlaybackSpeed(double speed) => _dao.set(_playbackSpeedKey, speed.toString());
+
   static const _lastUpdateCheckAtKey = 'last_update_check_at';
 
   /// When the update manifest was last successfully fetched, as an ISO-8601

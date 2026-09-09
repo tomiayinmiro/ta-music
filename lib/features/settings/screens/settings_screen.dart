@@ -13,6 +13,7 @@ import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/recommendation_providers.dart';
 import '../../../data/providers/repository_providers.dart';
+import '../../../data/providers/theme_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
 import '../../equalizer/screens/equalizer_screen.dart';
@@ -44,6 +45,45 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.containerMargin),
         children: [
+          Text('Appearance', style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.stackSm),
+          GlassContainer(
+            padding: const EdgeInsets.all(AppSpacing.stackMd),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'THEME',
+                  style: AppTypography.overline.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.stackSm),
+                Wrap(
+                  spacing: AppSpacing.stackSm,
+                  children: [
+                    for (final mode in ThemeMode.values)
+                      ChoiceChip(
+                        label: Text(switch (mode) {
+                          ThemeMode.light => 'Light',
+                          ThemeMode.dark => 'Dark',
+                          ThemeMode.system => 'System default',
+                        }),
+                        selected: (ref.watch(themeModeProvider).value ?? ThemeMode.system) == mode,
+                        onSelected: (_) async {
+                          final repo = await ref.read(settingsRepositoryProvider.future);
+                          await repo.setThemeMode(mode.name);
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.stackSm),
+                Text(
+                  'Choose how TA Music looks. System default follows your device\'s theme.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.stackLg),
           Text('Manage folders', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
           Text(
@@ -128,6 +168,39 @@ class SettingsScreen extends ConsumerWidget {
                 final repo = await ref.read(settingsRepositoryProvider.future);
                 await repo.setResumeAfterInterruption(value);
               },
+            ),
+          ),
+          const SizedBox(height: AppSpacing.stackSm),
+          GlassContainer(
+            padding: const EdgeInsets.all(AppSpacing.stackMd),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'PLAYBACK SPEED',
+                  style: AppTypography.overline.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.stackSm),
+                Wrap(
+                  spacing: AppSpacing.stackSm,
+                  children: [
+                    for (final speed in kPlaybackSpeedOptions)
+                      ChoiceChip(
+                        label: Text('${speed}x'.replaceAll('.0x', 'x')),
+                        selected: (ref.watch(playbackSpeedProvider).value ?? 1.0) == speed,
+                        onSelected: (_) async {
+                          final repo = await ref.read(settingsRepositoryProvider.future);
+                          await repo.setPlaybackSpeed(speed);
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.stackSm),
+                Text(
+                  'Adjust playback speed. Useful for audiobooks and podcasts.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
           if (ref.watch(isEqualizerSupportedProvider)) ...[

@@ -6,6 +6,7 @@ import 'package:logger/logger.dart';
 
 import 'core/theme/theme_data.dart';
 import 'data/providers/repository_providers.dart';
+import 'data/providers/theme_providers.dart';
 import 'data/providers/update_providers.dart';
 import 'features/library/widgets/app_shell.dart';
 import 'features/update/widgets/update_dialog.dart';
@@ -67,11 +68,14 @@ class _AppState extends ConsumerState<App> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider).value ?? ThemeMode.system;
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: 'TA MUSIC',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
       home: const AppShell(),
     );
   }
