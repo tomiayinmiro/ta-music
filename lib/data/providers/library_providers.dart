@@ -6,6 +6,7 @@ import '../models/excluded_folder.dart';
 import '../models/playlist.dart';
 import '../models/scan_root.dart';
 import '../models/song.dart';
+import '../repositories/library_repository.dart';
 import '../repositories/playlist_repository.dart';
 import '../repositories/reactive_query.dart';
 import '../services/library_scanner.dart';
@@ -159,4 +160,47 @@ class LibraryScanController extends Notifier<ScanProgress?> {
 
 final libraryScanControllerProvider = NotifierProvider<LibraryScanController, ScanProgress?>(
   LibraryScanController.new,
+);
+
+/// Android storage/audio permission status, checked app-wide rather than
+/// locally per-screen — `null` means "not checked yet this app session".
+/// [HomeScreen]'s first-launch flow and the persistent [PermissionBanner]
+/// both read this single source of truth so they can't drift out of sync.
+/// `App`'s `WidgetsBindingObserver` calls [refresh] on launch and whenever
+/// the app resumes from the background (e.g. the user granting the
+/// permission from the system Settings page and switching back), which is
+/// also how a newly-granted permission gets picked up without the user
+/// having to manually tap "Rescan library" themselves.
+class AndroidPermissionController extends Notifier<StoragePermissionStatus?> {
+  @override
+  StoragePermissionStatus? build() => null;
+
+  /// Checks current status without prompting. Auto-starts a scan if this
+  /// call finds the permission newly granted since the last known status.
+  Future<void> refresh() async {
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    final previous = state;
+    state = await repo.checkStoragePermissionStatus();
+    _maybeAutoScan(previous, state);
+  }
+
+  /// Actively prompts (the OS dialog on Android). Same newly-granted
+  /// auto-scan behavior as [refresh].
+  Future<void> request() async {
+    final repo = await ref.read(libraryRepositoryProvider.future);
+    final previous = state;
+    state = await repo.requestStoragePermission();
+    _maybeAutoScan(previous, state);
+  }
+
+  void _maybeAutoScan(StoragePermissionStatus? previous, StoragePermissionStatus? current) {
+    final newlyGranted =
+        current == StoragePermissionStatus.granted && previous != StoragePermissionStatus.granted;
+    if (newlyGranted) ref.read(libraryScanControllerProvider.notifier).startScan();
+  }
+}
+
+final androidPermissionStatusProvider =
+    NotifierProvider<AndroidPermissionController, StoragePermissionStatus?>(
+  AndroidPermissionController.new,
 );

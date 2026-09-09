@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/widgets/permission_banner.dart';
 import '../../../shared/widgets/scan_progress_banner.dart';
 import '../../aura/screens/aura_screen.dart';
 import '../../now_playing/widgets/mini_player.dart';
@@ -11,7 +12,10 @@ import '../screens/library_gallery_screen.dart';
 import 'app_nav_drawer.dart';
 
 /// Root scaffold: drawer + bottom nav (Lounge / The Gallery / Aura) + the
-/// persistent scan-progress banner, per the Phase 2 brief.
+/// persistent scan-progress banner, per the Phase 2 brief, plus (Android
+/// only) the storage/audio permission-required banner (2026-09-09 fix) —
+/// shown across every tab, not just inside the library's own empty state,
+/// since permission being denied affects the whole app, not just Home.
 ///
 /// The 3rd tab was Favorites through Phase 4; Phase 4.5 (approved
 /// 2026-08-21) replaced it with Aura, matching `designs/aura/local_stats/`'s
@@ -41,6 +45,7 @@ class AppShell extends ConsumerWidget {
                 ],
               ),
             ),
+            const PermissionBanner(),
             const ScanProgressBanner(),
             const MiniPlayer(),
           ],

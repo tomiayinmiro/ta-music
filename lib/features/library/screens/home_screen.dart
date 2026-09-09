@@ -10,7 +10,6 @@ import '../../../data/models/song.dart';
 import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/recommendation_providers.dart';
-import '../../../data/providers/repository_providers.dart';
 import '../../../data/repositories/library_repository.dart';
 import '../../../shared/widgets/cover_art.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -46,7 +45,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _checkedPermissionThisSession = false;
+  bool _promptedThisSession = false;
 
   @override
   void initState() {
@@ -57,11 +56,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _maybePromptForPermission() async {
-    if (_checkedPermissionThisSession || !mounted) return;
-    _checkedPermissionThisSession = true;
+    if (_promptedThisSession || !mounted) return;
+    _promptedThisSession = true;
 
-    final repo = await ref.read(libraryRepositoryProvider.future);
-    final status = await repo.checkStoragePermissionStatus();
+    // `App`'s WidgetsBindingObserver already kicked off the on-launch check
+    // (androidPermissionStatusProvider) — usually resolved by the time this
+    // post-frame callback runs, but if this frame won the race, wait for
+    // it explicitly instead of reading a still-null status and silently
+    // skipping the first-launch dialog.
+    if (ref.read(androidPermissionStatusProvider) == null) {
+      await ref.read(androidPermissionStatusProvider.notifier).refresh();
+    }
+    if (!mounted) return;
+    final status = ref.read(androidPermissionStatusProvider);
     // Only the plain "never asked / soft-denied" state gets the proactive
     // dialog. Already-granted needs nothing; permanently-denied would just
     // be nagging on every cold start for something the user already
@@ -94,15 +101,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
     if (proceed == true && mounted) {
-      await _requestPermissionAndScan();
-    }
-  }
-
-  Future<void> _requestPermissionAndScan() async {
-    final repo = await ref.read(libraryRepositoryProvider.future);
-    final status = await repo.requestStoragePermission();
-    if (status == StoragePermissionStatus.granted) {
-      ref.read(libraryScanControllerProvider.notifier).startScan();
+      await ref.read(androidPermissionStatusProvider.notifier).request();
     }
   }
 
@@ -159,33 +158,15 @@ class _AndroidPermissionEmptyState extends ConsumerStatefulWidget {
 }
 
 class _AndroidPermissionEmptyStateState extends ConsumerState<_AndroidPermissionEmptyState> {
-  StoragePermissionStatus? _status;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshStatus();
-  }
-
-  Future<void> _refreshStatus() async {
-    final repo = await ref.read(libraryRepositoryProvider.future);
-    final status = await repo.checkStoragePermissionStatus();
-    if (mounted) setState(() => _status = status);
-  }
-
-  Future<void> _onGrantAccess() async {
-    final repo = await ref.read(libraryRepositoryProvider.future);
-    final status = await repo.requestStoragePermission();
-    if (!mounted) return;
-    setState(() => _status = status);
-    if (status == StoragePermissionStatus.granted) {
-      ref.read(libraryScanControllerProvider.notifier).startScan();
-    }
-  }
+  Future<void> _onGrantAccess() =>
+      ref.read(androidPermissionStatusProvider.notifier).request();
 
   @override
   Widget build(BuildContext context) {
-    final status = _status;
+    // Reads the same app-wide status `App`'s WidgetsBindingObserver already
+    // checked on launch (and PermissionBanner shows elsewhere) — no local
+    // duplicate check here.
+    final status = ref.watch(androidPermissionStatusProvider);
     if (status == null) {
       return const Center(child: CircularProgressIndicator());
     }

@@ -66,6 +66,11 @@ dependencies:
   # ^6.3.0). 10.2.1+ resolves cleanly against the existing file_picker ^12.0.0.
   package_info_plus: ^10.2.1
   url_launcher: ^6.3.2
+  # Needed so LibraryRepository can branch Android permission requests on
+  # the real API level (Permission.audio vs Permission.storage) instead of
+  # requesting both and accepting either — see the Phase 6+ permission-logic
+  # fix in CLAUDE.md for why that masked real denials on Android <=12.
+  device_info_plus: ^13.2.0
 
 dev_dependencies:
   flutter_test:

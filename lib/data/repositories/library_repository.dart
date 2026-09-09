@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:logger/logger.dart';
 import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
@@ -11,6 +13,8 @@ import '../models/excluded_folder.dart';
 import '../models/scan_root.dart';
 import '../services/library_scanner.dart';
 import 'reactive_query.dart';
+
+final _logger = Logger();
 
 /// Result of a storage/audio permission check or request.
 enum StoragePermissionStatus {
@@ -38,6 +42,19 @@ class LibraryRepository {
   final ExcludedFolderDao _excludedFolderDao;
   final SongDao _songDao;
   final _scanner = LibraryScanner();
+
+  /// Cached for the process lifetime — the running OS version can't change
+  /// underneath the app, so there's no reason to re-query the platform
+  /// channel on every permission check/request.
+  int? _cachedAndroidSdkInt;
+
+  Future<int> _androidSdkInt() async {
+    final cached = _cachedAndroidSdkInt;
+    if (cached != null) return cached;
+    final info = await DeviceInfoPlugin().androidInfo;
+    _cachedAndroidSdkInt = info.version.sdkInt;
+    return info.version.sdkInt;
+  }
 
   Stream<List<ScanRoot>> watchScanRoots() => watchQuery({'scan_roots'}, _scanRootDao.getAll);
 
@@ -94,12 +111,33 @@ class LibraryRepository {
   /// permission model.
   Future<StoragePermissionStatus> checkStoragePermissionStatus() async {
     if (!Platform.isAndroid) return StoragePermissionStatus.granted;
-    final audioStatus = await Permission.audio.status;
-    final storageStatus = await Permission.storage.status;
-    if (audioStatus.isGranted || storageStatus.isGranted) return StoragePermissionStatus.granted;
-    if (audioStatus.isPermanentlyDenied || storageStatus.isPermanentlyDenied) {
-      return StoragePermissionStatus.permanentlyDenied;
+    final sdkInt = await _androidSdkInt();
+    final primary = _primaryPermission(sdkInt);
+    final primaryStatus = await primary.status;
+    // TODO(permission-diagnostics): remove before release — added to
+    // diagnose the Tecno BF6/Android 12 degraded-scan regression, where the
+    // app was silently treating Permission.audio's no-op "granted" as real
+    // on pre-13 devices and skipping the actual READ_EXTERNAL_STORAGE check.
+    _logger.i('[permission] check sdk=$sdkInt primary=$primary status=$primaryStatus');
+    if (primaryStatus.isGranted) return StoragePermissionStatus.granted;
+
+    // Only Android 13+ has a real fallback worth checking — Permission.audio
+    // is a genuine permission there, and Permission.storage (capped at
+    // maxSdkVersion=32 in the manifest) is declared but effectively inert;
+    // still checked per spec since the OS *could* still report it granted on
+    // some OEM skins. Below 13, Permission.storage IS the real permission —
+    // there's nothing to fall back to.
+    if (sdkInt >= 33) {
+      final fallbackStatus = await Permission.storage.status;
+      _logger.i('[permission] fallback check sdk=$sdkInt permission=storage status=$fallbackStatus');
+      if (fallbackStatus.isGranted) return StoragePermissionStatus.granted;
+      if (primaryStatus.isPermanentlyDenied || fallbackStatus.isPermanentlyDenied) {
+        return StoragePermissionStatus.permanentlyDenied;
+      }
+      return StoragePermissionStatus.denied;
     }
+
+    if (primaryStatus.isPermanentlyDenied) return StoragePermissionStatus.permanentlyDenied;
     return StoragePermissionStatus.denied;
   }
 
@@ -111,19 +149,47 @@ class LibraryRepository {
   /// (its own source explicitly skips pre-TIRAMISU: "we should not handle
   /// permissions on pre Android TIRAMISU devices") — confirmed 2026-08-17
   /// testing on a real Android 12 device, where it granted trivially
-  /// without ever prompting. Permission.storage is the
-  /// READ_EXTERNAL_STORAGE-backed counterpart for <=12; it's a no-op the
-  /// other way on 13+. Requesting both and accepting either covers both OS
-  /// versions without needing a device_info plugin to branch on SDK int.
+  /// without ever prompting. The previous version of this method requested
+  /// both Permission.audio and Permission.storage and accepted either being
+  /// granted, which meant Permission.audio's fake "granted" on <=12 could
+  /// mask a real READ_EXTERNAL_STORAGE denial — the app would proceed to
+  /// scan believing it had permission when MediaStore actually had none,
+  /// producing a silently degraded (near-empty) scan. Root-caused
+  /// 2026-09-09 against a real Tecno BF6/Android 12 device. Now branches on
+  /// the real API level via [_androidSdkInt] (device_info_plus) instead of
+  /// asking both and hoping: Android 13+ asks Permission.audio (falling
+  /// back to Permission.storage if that's denied, per spec, though it's
+  /// realistically inert there — capped at maxSdkVersion=32 in the
+  /// manifest); Android 12 and below asks Permission.storage only, since
+  /// that's the only one that's ever real pre-13.
   Future<StoragePermissionStatus> requestStoragePermission() async {
     if (!Platform.isAndroid) return StoragePermissionStatus.granted;
-    final statuses = await [Permission.audio, Permission.storage].request();
-    if (statuses.values.any((status) => status.isGranted)) return StoragePermissionStatus.granted;
-    if (statuses.values.any((status) => status.isPermanentlyDenied)) {
-      return StoragePermissionStatus.permanentlyDenied;
+    final sdkInt = await _androidSdkInt();
+    final primary = _primaryPermission(sdkInt);
+    final status = await primary.request();
+    // TODO(permission-diagnostics): remove before release — see the check
+    // method's matching TODO above.
+    _logger.i('[permission] requested sdk=$sdkInt permission=$primary result=$status');
+    if (status.isGranted) return StoragePermissionStatus.granted;
+
+    if (sdkInt >= 33) {
+      final fallback = await Permission.storage.request();
+      _logger.i('[permission] fallback requested sdk=$sdkInt permission=storage result=$fallback');
+      if (fallback.isGranted) return StoragePermissionStatus.granted;
+      if (status.isPermanentlyDenied || fallback.isPermanentlyDenied) {
+        return StoragePermissionStatus.permanentlyDenied;
+      }
+      return StoragePermissionStatus.denied;
     }
+
+    if (status.isPermanentlyDenied) return StoragePermissionStatus.permanentlyDenied;
     return StoragePermissionStatus.denied;
   }
+
+  /// Android 13+ (API 33) gets the real, OS-tracked `READ_MEDIA_AUDIO`
+  /// permission; everything below that gets `READ_EXTERNAL_STORAGE`, the
+  /// only one of the two that actually means anything pre-13.
+  Permission _primaryPermission(int sdkInt) => sdkInt >= 33 ? Permission.audio : Permission.storage;
 
   Stream<ScanProgress> scan() async* {
     // Requested here, right before a scan, rather than unconditionally at
