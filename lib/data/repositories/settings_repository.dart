@@ -92,16 +92,6 @@ class SettingsRepository {
   Future<void> setLastDismissedUpdateVersion(String version) =>
       _dao.set(_lastDismissedUpdateVersionKey, version);
 
-  static const _themeModeKey = 'theme_mode';
-
-  /// Raw 'light' / 'dark' / 'system' — kept as a plain string here (not a
-  /// `ThemeMode`) so the data layer stays Flutter-free; parsed in
-  /// `theme_providers.dart`. Defaults to 'system'.
-  Stream<String> watchThemeMode() =>
-      watchQuery({'settings'}, () async => (await _dao.get(_themeModeKey)) ?? 'system');
-
-  Future<void> setThemeMode(String mode) => _dao.set(_themeModeKey, mode);
-
   static const _playbackSpeedKey = 'playback_speed';
 
   /// Global playback speed multiplier applied to every song — not per-song

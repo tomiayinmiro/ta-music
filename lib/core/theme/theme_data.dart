@@ -45,16 +45,6 @@ class AppTheme {
     );
   }
 
-  /// Temporary v1 stub — resolves identically to [dark]. A real light
-  /// palette (sonic_sanctuary_2's tokens inverted: lighter surfaces, darker
-  /// text/accents, same visual language) is real design work of its own and
-  /// was deferred to v1.5 (approved 2026-09-08) rather than guessed at here
-  /// — see BACKLOG.md's "Custom themes / color schemes". The Theme setting
-  /// (Light/Dark/System default) is fully wired and persists a real choice;
-  /// picking Light, or System on a light-mode device, just looks like Dark
-  /// until this getter is replaced with real tokens.
-  static ThemeData get light => dark;
-
   static ColorScheme get _colorScheme => const ColorScheme(
         brightness: Brightness.dark,
         surface: AppColors.surface,

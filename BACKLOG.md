@@ -43,10 +43,10 @@ Each item includes: what it is, why deferred, current workaround (if any), rough
 - **Why deferred**: Basic controls already work via audio_service defaults. Customization is polish, not core.
 - **Scope**: Small. ~half session.
 
-### Custom themes / color schemes
-- **What**: Beyond light/dark toggle, let users pick accent colors or fully custom themes. Also where the *real* Light theme palette itself belongs — the Settings-expansion pass (2026-09-08) shipped the Light/Dark/System default setting and its persistence, but `AppTheme.light` is currently a stub that resolves identically to `AppTheme.dark` (see `theme_data.dart`); designing an actual inverted sonic_sanctuary_2 light palette (lighter surfaces, darker text/accents, same visual language) is real UX work that belongs here, not guessed at inline.
-- **Why deferred**: v1.5 territory. Base light/dark is enough for launch — and until the real light palette exists, Light and System-on-a-light-device both just look like Dark.
-- **Scope**: Medium. Requires designing multiple theme variants + theme editor UI (plus, at minimum, the one real light palette above).
+### Light theme + theme toggle
+- **What**: Add a proper light theme design (sonic_sanctuary_2 palette inverted for light mode) plus the Settings toggle to pick Light/Dark/System default.
+- **Why deferred**: The toggle was built in Round 1 as a stub with no light theme designed. Rather than ship a misleading toggle where all options look identical, both the toggle and the theme design are deferred together to v1.5.
+- **Scope**: Medium. Requires designing every screen and component in light mode + wiring the toggle back in.
 
 ### Reset stats options  
 - **What**: Setting buttons to reset play counts, listening history, Aura stats. Useful for users who want to "start fresh" or for testing.

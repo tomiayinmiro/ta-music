@@ -13,7 +13,6 @@ import '../../../data/providers/library_providers.dart';
 import '../../../data/providers/playback_providers.dart';
 import '../../../data/providers/recommendation_providers.dart';
 import '../../../data/providers/repository_providers.dart';
-import '../../../data/providers/theme_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
 import '../../equalizer/screens/equalizer_screen.dart';
@@ -25,9 +24,13 @@ import 'lyrics_screen.dart';
 /// borrowed from the one relevant precedent that does exist —
 /// `designs/navigation_drawer_audio_customization`'s "AUDIO ENGINE" drawer
 /// panel — since that's the closest thing sonic_sanctuary_2 offers to a
-/// settings section pattern. The rest of Settings (theme, cache) still
-/// isn't built — that's the real Phase 7 scope. Version + About moved out
-/// to their own nav-drawer entries — see CLAUDE.md's Version/About
+/// settings section pattern. The rest of Settings (cache) still isn't
+/// built — that's the real Phase 7 scope. No theme toggle here by design:
+/// Round 1 shipped one as a stub with no real light palette behind it, then
+/// removed it the same day rather than ship a Light/Dark/System choice
+/// where every option renders identically — see BACKLOG.md's "Light theme +
+/// theme toggle" entry, deferred to v1.5 as a pair. Version + About moved
+/// out to their own nav-drawer entries — see CLAUDE.md's Version/About
 /// restructuring decisions.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -45,45 +48,6 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.containerMargin),
         children: [
-          Text('Appearance', style: theme.textTheme.titleLarge),
-          const SizedBox(height: AppSpacing.stackSm),
-          GlassContainer(
-            padding: const EdgeInsets.all(AppSpacing.stackMd),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'THEME',
-                  style: AppTypography.overline.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: AppSpacing.stackSm),
-                Wrap(
-                  spacing: AppSpacing.stackSm,
-                  children: [
-                    for (final mode in ThemeMode.values)
-                      ChoiceChip(
-                        label: Text(switch (mode) {
-                          ThemeMode.light => 'Light',
-                          ThemeMode.dark => 'Dark',
-                          ThemeMode.system => 'System default',
-                        }),
-                        selected: (ref.watch(themeModeProvider).value ?? ThemeMode.system) == mode,
-                        onSelected: (_) async {
-                          final repo = await ref.read(settingsRepositoryProvider.future);
-                          await repo.setThemeMode(mode.name);
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.stackSm),
-                Text(
-                  'Choose how TA Music looks. System default follows your device\'s theme.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.stackLg),
           Text('Manage folders', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
           Text(
