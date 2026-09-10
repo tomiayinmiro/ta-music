@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../models/playlist.dart';
+import '../../models/playlist_song.dart';
 import '../../models/song.dart';
 import '../database_change_notifier.dart';
 
@@ -56,6 +57,19 @@ class PlaylistDao {
       ORDER BY ps.position
     ''', [playlistId]);
     return rows.map(Song.fromMap).toList();
+  }
+
+  /// Raw `playlist_songs` rows for [playlistId], in position order — backup
+  /// export's source for a playlist's membership, since [getSongs] only
+  /// returns resolved [Song]s and drops `position`/`added_at`.
+  Future<List<PlaylistSong>> getMembershipRows(int playlistId) async {
+    final rows = await _db.query(
+      'playlist_songs',
+      where: 'playlist_id = ?',
+      whereArgs: [playlistId],
+      orderBy: 'position',
+    );
+    return rows.map(PlaylistSong.fromMap).toList();
   }
 
   Future<int> getSongCount(int playlistId) async {

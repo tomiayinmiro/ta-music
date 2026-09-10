@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/translation_constants.dart';
 import '../repositories/album_repository.dart';
 import '../repositories/artist_repository.dart';
+import '../repositories/backup_repository.dart';
+import '../repositories/cache_management_repository.dart';
 import '../repositories/eq_preset_repository.dart';
 import '../repositories/favorite_repository.dart';
 import '../repositories/library_repository.dart';
@@ -75,6 +77,7 @@ final auraServiceProvider = FutureProvider<AuraService>((ref) async {
     playHistoryDao: await ref.watch(playHistoryDaoProvider.future),
     songDao: await ref.watch(songDaoProvider.future),
     listeningSegmentDao: await ref.watch(listeningSegmentDaoProvider.future),
+    settingsDao: await ref.watch(settingsDaoProvider.future),
   );
 });
 
@@ -106,4 +109,26 @@ final recommendationRepositoryProvider = FutureProvider<RecommendationRepository
 
 final eqPresetRepositoryProvider = FutureProvider<EqPresetRepository>((ref) async {
   return EqPresetRepository(await ref.watch(eqPresetDaoProvider.future));
+});
+
+final backupRepositoryProvider = FutureProvider<BackupRepository>((ref) async {
+  return BackupRepository(
+    songDao: await ref.watch(songDaoProvider.future),
+    playlistDao: await ref.watch(playlistDaoProvider.future),
+    favoriteDao: await ref.watch(favoriteDaoProvider.future),
+    playHistoryDao: await ref.watch(playHistoryDaoProvider.future),
+    auraStateDao: await ref.watch(auraStateDaoProvider.future),
+    lyricsCacheDao: await ref.watch(lyricsCacheDaoProvider.future),
+    recommendationSeedCacheDao: await ref.watch(recommendationSeedCacheDaoProvider.future),
+    settingsRepository: await ref.watch(settingsRepositoryProvider.future),
+  );
+});
+
+final cacheManagementRepositoryProvider = FutureProvider<CacheManagementRepository>((ref) async {
+  return CacheManagementRepository(
+    albumDao: await ref.watch(albumDaoProvider.future),
+    lyricsCacheDao: await ref.watch(lyricsCacheDaoProvider.future),
+    translationsCacheDao: await ref.watch(translationsCacheDaoProvider.future),
+    recommendationSeedCacheDao: await ref.watch(recommendationSeedCacheDaoProvider.future),
+  );
 });

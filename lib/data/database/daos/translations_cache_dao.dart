@@ -48,6 +48,20 @@ class TranslationsCacheDao {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Estimated on-disk size (bytes) of the whole table — the Storage &
+  /// Cache screen's "Translations" tile. No real file backs these rows, so
+  /// this sums the text columns' stored length as a stand-in for size.
+  Future<int> cacheSizeBytes() async {
+    final result = await _db.rawQuery('''
+      SELECT COALESCE(SUM(
+        LENGTH(source_text) + LENGTH(COALESCE(source_lang, '')) + LENGTH(target_lang) +
+        LENGTH(translated_text)
+      ), 0) AS total
+      FROM translations_cache
+    ''');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
   Future<TranslationCacheStats> stats() async {
     final totalRows =
         Sqflite.firstIntValue(await _db.rawQuery('SELECT COUNT(*) FROM translations_cache')) ?? 0;

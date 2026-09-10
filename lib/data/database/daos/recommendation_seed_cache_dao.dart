@@ -28,4 +28,13 @@ class RecommendationSeedCacheDao {
     await _db.delete('recommendation_seed_cache', where: 'id = 1');
     DatabaseChangeNotifier.instance.notify({'recommendation_seed_cache'});
   }
+
+  /// Estimated on-disk size (bytes) of the cached seed row, if any — the
+  /// Storage & Cache screen's "Recommendations" tile. A single-row table, so
+  /// this is either 0 or one small fixed estimate rather than a real query
+  /// worth writing.
+  Future<int> cacheSizeBytes() async {
+    final rows = await _db.query('recommendation_seed_cache', where: 'id = 1', limit: 1);
+    return rows.isEmpty ? 0 : 32;
+  }
 }

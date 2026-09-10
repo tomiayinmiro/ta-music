@@ -23,6 +23,14 @@ class FavoriteDao {
     return rows.map(Favorite.fromMap).toList();
   }
 
+  /// Every favorite row, unfiltered by play count — unlike
+  /// [getAllSortedByPlayCount], used where the raw membership set itself is
+  /// needed (e.g. backup export), not the play-count-sorted display list.
+  Future<List<Favorite>> getAll() async {
+    final rows = await _db.query('favorites');
+    return rows.map(Favorite.fromMap).toList();
+  }
+
   Future<bool> isFavorite(int songId) async {
     final rows = await _db.query('favorites', where: 'song_id = ?', whereArgs: [songId], limit: 1);
     return rows.isNotEmpty;

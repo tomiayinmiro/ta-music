@@ -24,6 +24,30 @@ class PlayHistoryDao {
     DatabaseChangeNotifier.instance.notify({'play_history'});
   }
 
+  /// Every play_history row, unfiltered — backup export's source for the
+  /// full listening history. Can run into the thousands for a long-lived
+  /// library; callers doing anything CPU-heavy with the result (JSON
+  /// encoding) should offload that work, not this query itself (sqflite
+  /// can't cross an isolate boundary).
+  Future<List<PlayHistoryEntry>> getAll() async {
+    final rows = await _db.query('play_history');
+    return rows.map(PlayHistoryEntry.fromMap).toList();
+  }
+
+  /// Inserts every entry in one batch — backup import's counterpart to
+  /// [getAll]. Appends unconditionally (no dedupe): each row represents an
+  /// individual real listen, so importing a backup's history is additive by
+  /// definition, same as the live 50%-or-completion recording path.
+  Future<void> insertBatch(List<PlayHistoryEntry> entries) async {
+    if (entries.isEmpty) return;
+    final batch = _db.batch();
+    for (final entry in entries) {
+      batch.insert('play_history', entry.toMap());
+    }
+    await batch.commit(noResult: true);
+    DatabaseChangeNotifier.instance.notify({'play_history'});
+  }
+
   Future<int> totalPlayCount() async {
     final result = await _db.rawQuery('SELECT COUNT(*) AS c FROM play_history');
     return Sqflite.firstIntValue(result) ?? 0;

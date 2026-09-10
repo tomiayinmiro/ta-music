@@ -53,6 +53,11 @@ Each item includes: what it is, why deferred, current workaround (if any), rough
 - **Why deferred**: Backup/restore covers most of this use case (backup, then start fresh manually via reinstall). Explicit reset buttons are nice-to-have.
 - **Scope**: Small. ~half session.
 
+### Cloud backup / auto-backup
+- **What**: Automatic scheduled backups to user's cloud storage (Google Drive, iCloud, Dropbox). Manual export/import shipped in v1; automated cloud backup deferred.
+- **Why deferred**: Requires cloud service integration, OAuth setup, per-service SDK. Significant scope. Manual export/import solves the "don't lose my data" problem for v1 users willing to save a file themselves.
+- **Scope**: Large. 3+ sessions minimum.
+
 ### Advanced audio settings
 - **What**: Bit rate preferences, output device selection, sample rate control
 - **Why deferred**: Most users won't touch these. Only relevant for audiophile use cases.

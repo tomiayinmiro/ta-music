@@ -94,6 +94,30 @@ class LyricsCacheDao {
     );
   }
 
+  /// Estimated on-disk size (bytes) of everything EXCEPT `user_added` rows —
+  /// the Storage & Cache screen's "Lyrics" tile. `user_added` entries are
+  /// user data, not cache, and must never be counted toward, or deleted by,
+  /// a cache clear (see [clearAllExceptUserAdded]). There's no real file
+  /// backing these rows, so this sums the text columns' stored length as a
+  /// stand-in for size, same unit (bytes) SQLite already stores TEXT in.
+  Future<int> cacheSizeBytesExcludingUserAdded() async {
+    final result = await _db.rawQuery('''
+      SELECT COALESCE(SUM(
+        LENGTH(artist_key) + LENGTH(title_key) + LENGTH(COALESCE(synced_lyrics_lrc, '')) +
+        LENGTH(COALESCE(plain_lyrics, ''))
+      ), 0) AS total
+      FROM lyrics_cache WHERE source != 'user_added'
+    ''');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Deletes every cached lyrics row EXCEPT `user_added` ones — Settings'
+  /// "Storage & Cache" clear action. Manually-added lyrics are the user's
+  /// own data, not re-fetchable cache, and must survive this untouched.
+  Future<void> clearAllExceptUserAdded() async {
+    await _db.delete('lyrics_cache', where: "source != 'user_added'");
+  }
+
   Future<LyricsCacheStats> stats() async {
     final totalRows =
         Sqflite.firstIntValue(await _db.rawQuery('SELECT COUNT(*) FROM lyrics_cache')) ?? 0;

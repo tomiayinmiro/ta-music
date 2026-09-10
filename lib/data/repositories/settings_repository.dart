@@ -20,6 +20,9 @@ class SettingsRepository {
   Future<void> setResumeAfterInterruption(bool value) =>
       _dao.set(_resumeAfterInterruptionKey, value.toString());
 
+  Future<bool> getResumeAfterInterruption() async =>
+      (await _dao.get(_resumeAfterInterruptionKey)) == 'true';
+
   static const _translationTargetLanguageKey = 'translation_target_language';
 
   /// The user's chosen lyrics-translation target language, an ISO 639-1 code
@@ -36,6 +39,11 @@ class SettingsRepository {
   Future<void> setTranslationTargetLanguage(String? code) =>
       _dao.set(_translationTargetLanguageKey, code ?? '');
 
+  Future<String?> getTranslationTargetLanguage() async {
+    final value = await _dao.get(_translationTargetLanguageKey);
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
   static const _recommendationsEnabledKey = 'recommendations_enabled';
 
   /// Whether the local recommendation engine (Home's "Because you played X"
@@ -47,6 +55,9 @@ class SettingsRepository {
 
   Future<void> setRecommendationsEnabled(bool value) =>
       _dao.set(_recommendationsEnabledKey, value.toString());
+
+  Future<bool> getRecommendationsEnabled() async =>
+      (await _dao.get(_recommendationsEnabledKey)) != 'false';
 
   static const _eqEnabledKey = 'eq_enabled';
 
@@ -103,6 +114,11 @@ class SettingsRepository {
 
   Future<void> setPlaybackSpeed(double speed) => _dao.set(_playbackSpeedKey, speed.toString());
 
+  Future<double> getPlaybackSpeed() async {
+    final raw = await _dao.get(_playbackSpeedKey);
+    return raw != null ? (double.tryParse(raw) ?? 1.0) : 1.0;
+  }
+
   static const _lastUpdateCheckAtKey = 'last_update_check_at';
 
   /// When the update manifest was last successfully fetched, as an ISO-8601
@@ -117,4 +133,56 @@ class SettingsRepository {
 
   Future<void> setLastUpdateCheckAt(DateTime timestamp) =>
       _dao.set(_lastUpdateCheckAtKey, timestamp.toIso8601String());
+
+  /// Applies a backup's preferences onto this device, but only for keys
+  /// that have never been explicitly set here — an untouched key reads as
+  /// `null` from the underlying key-value store, which is exactly how a
+  /// fresh install (or a fresh reinstall being restored from backup) looks.
+  /// A key this device has ever written — even to its own default — is left
+  /// alone, per the brief's "current settings win over imported ones."
+  /// See `BackupImportService`.
+  Future<void> applyImportedPreferencesIfUnset({
+    required double playbackSpeed,
+    required String? translationTargetLanguage,
+    required bool resumeAfterInterruption,
+    required bool recommendationsEnabled,
+  }) async {
+    if (await _dao.get(_playbackSpeedKey) == null) {
+      await setPlaybackSpeed(playbackSpeed);
+    }
+    if (await _dao.get(_translationTargetLanguageKey) == null) {
+      await setTranslationTargetLanguage(translationTargetLanguage);
+    }
+    if (await _dao.get(_resumeAfterInterruptionKey) == null) {
+      await setResumeAfterInterruption(resumeAfterInterruption);
+    }
+    if (await _dao.get(_recommendationsEnabledKey) == null) {
+      await setRecommendationsEnabled(recommendationsEnabled);
+    }
+  }
+
+  /// Settings key for [getImportedAuraMinutesOffset]/[addImportedAuraMinutesOffset].
+  /// Public (unlike this file's other key constants) because `AuraService`
+  /// also reads it directly via its own injected `SettingsDao`, rather than
+  /// depending on this whole repository just for one value — see
+  /// `AuraService.recompute()`.
+  static const importedAuraMinutesOffsetKey = 'imported_aura_minutes_offset';
+
+  /// Cumulative listening minutes carried in from backup imports — additive
+  /// across imports, and added on top of this device's own
+  /// `listening_segments` total by `AuraService.recompute()` every time it
+  /// runs. Kept in `settings` rather than written directly onto `aura_state`
+  /// because `recompute()` treats `aura_state` as a fully-derived cache and
+  /// overwrites it from `listening_segments` alone on every call — a direct
+  /// write there would be silently discarded the next time the Aura page
+  /// opens. See CLAUDE.md's Backup & Restore decisions.
+  Future<int> getImportedAuraMinutesOffset() async {
+    final raw = await _dao.get(importedAuraMinutesOffsetKey);
+    return raw != null ? (int.tryParse(raw) ?? 0) : 0;
+  }
+
+  Future<void> addImportedAuraMinutesOffset(int deltaMinutes) async {
+    final current = await getImportedAuraMinutesOffset();
+    await _dao.set(importedAuraMinutesOffsetKey, (current + deltaMinutes).toString());
+  }
 }

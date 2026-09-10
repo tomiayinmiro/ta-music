@@ -1,11 +1,13 @@
 import '../database/daos/aura_state_dao.dart';
 import '../database/daos/listening_segment_dao.dart';
 import '../database/daos/play_history_dao.dart';
+import '../database/daos/settings_dao.dart';
 import '../database/daos/song_dao.dart';
 import '../models/aura_level.dart';
 import '../models/aura_state.dart';
 import '../models/song.dart';
 import '../repositories/reactive_query.dart';
+import '../repositories/settings_repository.dart';
 
 /// The time windows Local Insights can be filtered by.
 enum AuraTimeWindow { sevenDays, oneMonth, allTime }
@@ -57,12 +59,14 @@ class AuraService {
     required this._playHistoryDao,
     required this._songDao,
     required this._listeningSegmentDao,
+    required this._settingsDao,
   });
 
   final AuraStateDao _auraStateDao;
   final PlayHistoryDao _playHistoryDao;
   final SongDao _songDao;
   final ListeningSegmentDao _listeningSegmentDao;
+  final SettingsDao _settingsDao;
 
   /// Reactively reads the cached [AuraState] — does not recompute. Callers
   /// that need fresh numbers (the Aura page, on open) call [recompute]
@@ -81,10 +85,21 @@ class AuraService {
   ///
   /// Sourced from `listening_segments` (real, wall-clock-measured time),
   /// not `play_history` — see `_migrationV6`'s doc for why a track's full
-  /// duration must never be credited for a partial listen.
+  /// duration must never be credited for a partial listen. Also folds in
+  /// any minutes carried over from a backup import (see
+  /// `SettingsRepository.importedAuraMinutesOffsetKey`) — those minutes
+  /// aren't reflected in this device's own `listening_segments` at all, so
+  /// without adding them back in here every recompute would silently erase
+  /// an imported total the moment the Aura page is opened again.
   Future<AuraState> recompute() async {
     final totalMs = await _listeningSegmentDao.totalListenedMs();
-    final totalMinutes = totalMs ~/ 60000;
+    final importedOffsetRaw = await _settingsDao.get(
+      SettingsRepository.importedAuraMinutesOffsetKey,
+    );
+    final importedOffsetMinutes = importedOffsetRaw != null
+        ? (int.tryParse(importedOffsetRaw) ?? 0)
+        : 0;
+    final totalMinutes = totalMs ~/ 60000 + importedOffsetMinutes;
     final level = currentLevelFromMinutes(totalMinutes);
     final existing = await currentState();
     final next = existing.copyWith(

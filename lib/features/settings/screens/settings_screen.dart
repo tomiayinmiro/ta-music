@@ -16,6 +16,8 @@ import '../../../data/providers/repository_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/glass_container.dart';
 import '../../equalizer/screens/equalizer_screen.dart';
+import '../widgets/backup_restore_section.dart';
+import '../widgets/storage_cache_section.dart';
 import 'lyrics_screen.dart';
 
 /// Settings — "Manage folders" pulled forward from Phase 7 (approved
@@ -202,20 +204,8 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
           ),
-          const SizedBox(height: AppSpacing.stackSm),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final repo = await ref.read(recommendationRepositoryProvider.future);
-              await repo.clearSeedCache();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Recommendation cache cleared.')),
-                );
-              }
-            },
-            icon: const Icon(Icons.delete_sweep_outlined),
-            label: const Text('Clear recommendation cache'),
-          ),
+          const SizedBox(height: AppSpacing.stackLg),
+          const BackupRestoreSection(),
           const SizedBox(height: AppSpacing.stackLg),
           Text('Advanced', style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.stackSm),
@@ -231,6 +221,8 @@ class SettingsScreen extends ConsumerWidget {
                       .push(MaterialPageRoute<void>(builder: (_) => const LyricsScreen())),
             ),
           ),
+          const SizedBox(height: AppSpacing.stackLg),
+          const StorageCacheSection(),
         ],
       ),
     );

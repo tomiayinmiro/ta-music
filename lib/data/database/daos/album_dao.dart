@@ -73,4 +73,16 @@ class AlbumDao {
     await _db.update('albums', {'cover_art_path': coverArtPath}, where: 'id = ?', whereArgs: [id]);
     DatabaseChangeNotifier.instance.notify({'albums'});
   }
+
+  /// Nulls every album's `cover_art_path` — the DB half of the Storage &
+  /// Cache screen's "Album cover art" clear action (the other half deletes
+  /// the actual `covers/*.jpg` files on disk). Same mechanism `_migrationV11`
+  /// used to force a one-time regeneration; here it's user-triggered instead
+  /// of a migration, but the effect on the next library scan is identical —
+  /// `LibraryScanner._ensureCoverArt` treats a null path as "not extracted
+  /// yet" and regenerates it.
+  Future<void> clearAllCoverArtPaths() async {
+    await _db.update('albums', {'cover_art_path': null});
+    DatabaseChangeNotifier.instance.notify({'albums'});
+  }
 }
